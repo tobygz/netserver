@@ -159,6 +159,9 @@ namespace net{
             int n, i;
 
             n = epoll_wait (efd, events, MAXEVENTS, -1);
+            if(n<0){
+                printf("epoll_wait error:%d\n", errno);
+            }
             qpsMgr::g_pQpsMgr->updateQps(2, n);
             for (i = 0; i < n; i++)
             {
@@ -209,7 +212,7 @@ namespace net{
                                 NI_NUMERICHOST | NI_NUMERICSERV);
                         if (s == 0)
                         {
-                            printf("%f Accepted connection on descriptor %d "
+                            printf("%.1f Accepted connection on descriptor %d "
                                     "(host=%s, port=%s)\n",getms()/1000.0, infd, hbuf, sbuf);
                         }
 
@@ -302,12 +305,12 @@ namespace net{
             if( ret == 0 ){
                 delLst.push(fd);
             }
-            pconn->OnProcess();
         }
         while(!delLst.empty()){
             int nfd = delLst.front();
             delLst.pop();
             m_readFdMap.erase(nfd);
+            //connObjMgr::g_pConnMgr->DelConn(nfd);
         }
 
         qpsMgr::g_pQpsMgr->dumpQpsInfo();
