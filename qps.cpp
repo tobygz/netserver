@@ -13,11 +13,17 @@ namespace net{
     pthread_mutex_t *mutexQps ; 
 
     long long getms(){
-		struct timeval te; 
-		gettimeofday(&te, NULL); // get current time
-		long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // calculate milliseconds
-		return milliseconds;
-	}
+        struct timeval te; 
+        gettimeofday(&te, NULL); // get current time
+        long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // calculate milliseconds
+        return milliseconds;
+    }
+    int getsec(){
+        struct timeval te; 
+        gettimeofday(&te, NULL); // get current time
+        long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // calculate milliseconds
+        return int(milliseconds/1000);
+    }
 
     qpsMgr::qpsMgr(){
         m_lastMs = 0;
@@ -70,6 +76,6 @@ namespace net{
         sprintf(m_debugInfo, "%s [online: %d]", m_debugInfo, connObjMgr::g_pConnMgr->GetOnline());
 
         pthread_mutex_unlock(mutexQps);
-        printf("%.1f [QPS]: %s\n",nowMs/1000.0, m_debugInfo );
+        printf("%.1f [QPS]: %s\r\n",nowMs/1000.0, m_debugInfo );
     }
 }

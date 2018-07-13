@@ -5,7 +5,6 @@
 #include <map>
 #include <pthread.h>
 
-//struct pthread_mutex_t;
 
 namespace net{
 

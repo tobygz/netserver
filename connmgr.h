@@ -10,10 +10,11 @@ namespace net{
         map<int,connObj*> m_connMap; //sessid
         map<int,connObj*> m_connFdMap; //fd
         int maxSessid;
-        public:
+    public:
         connObjMgr();
         int GetOnline();
         void CreateConnBatch(queue<int>*);
+        void ChkConnTimeout();
 
         connObj* CreateConn(int fd );
         connObj* GetConn(int fd);

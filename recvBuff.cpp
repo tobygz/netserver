@@ -11,6 +11,20 @@
 #define CHUNK 1024
 
 namespace net{
+    unsigned long long g_uid = 0;
+    msgObj::msgObj(int* pid, int* plen, char* p){
+        m_uid = g_uid++;
+        m_pmsgId = pid;
+        m_pbodyLen = plen;
+        m_pBody = p;
+    }
+    void msgObj::update(){
+        //OUTPUT_FUN("[NET] msgObj uid: %d update msgid: %d bodylen: %d\n",m_uid, m_msgId, m_bodyLen );
+    }
+    int msgObj::size(){
+        return *m_pbodyLen+8;
+    }
+
 
     recvBuff::~recvBuff(){
         memset( m_pMem, 0, DEFAULT_RECV_SIZE );
@@ -20,19 +34,23 @@ namespace net{
         }
     }
 
-    unsigned long long g_uid = 0;
-    msgObj::msgObj(int id, int len, char* p){
-            m_uid = g_uid++;
-            m_msgId = id;
-            m_bodyLen = len;
-            m_pBody = p;
+    //内存部分不包括包的大小
+    recvBuff::recvBuff( int size )
+        :m_bCanUnPack(true)
+    {
+        memset( m_pMem, 0, DEFAULT_RECV_SIZE );
+        if( size > DEFAULT_RECV_SIZE )
+        {
+            m_pBuffer = new char[size];
+        }else{
+            m_pBuffer = m_pMem;
+        }
+        m_iBuffSize = size;
+        m_pPointer = m_pBuffer;
+        m_eType = eRecvType_data;
     }
-    void msgObj::update(){
-        //OUTPUT_FUN("[NET] msgObj uid: %d update msgid: %d bodylen: %d\n",m_uid, m_msgId, m_bodyLen );
-    }
-    int msgObj::size(){
-        return m_bodyLen+8;
-    }
+
+
 
     bool recvBuff::unpack(){
         if(!m_bCanUnPack){
@@ -65,22 +83,6 @@ namespace net{
         memcpy(m_pBuffer + body_offset, output.c_str(), output.size());
 
         return true;
-    }
-
-    //内存部分不包括包的大小
-    recvBuff::recvBuff( int size )
-        :m_bCanUnPack(true)
-    {
-        memset( m_pMem, 0, DEFAULT_RECV_SIZE );
-        if( size > DEFAULT_RECV_SIZE )
-        {
-            m_pBuffer = new char[size];
-        }else{
-            m_pBuffer = m_pMem;
-        }
-        m_iBuffSize = size;
-        m_pPointer = m_pBuffer;
-        m_eType = eRecvType_data;
     }
 
     void    recvBuff::getMem( char* &pMem ) const

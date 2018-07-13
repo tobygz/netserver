@@ -23,8 +23,6 @@ namespace net{
         while(1){
             s = write(fd, buf+sendSize, size-sendSize);
             if(s==-1){
-                //connObjMgr::g_pConnMgr->DelConn(fd);
-
                 netServer::g_netServer->appendConnClose(fd);
                 return;
             }
@@ -43,7 +41,11 @@ namespace net{
             bret = 0;
         }
 
-        parseBuff();
+        if(!parseBuff()){
+            if( getsec() - m_lastSec >= 5){
+                bret = 0;
+            }
+        }
         dealMsgQueue();
         resetBuffer();
         return bret;
@@ -58,28 +60,55 @@ namespace net{
     }
     void connObj::dealMsgQueue(){
         //qpsMgr::g_pQpsMgr->updateQps(4, m_queueRecvMsg.size());
+        int len = 0;
         while(!m_queueRecvMsg.empty()){
             msgObj *p = m_queueRecvMsg.front();
             m_queueRecvMsg.pop();
+            //*
+            len = *(int*)(p->m_pbodyLen);
+            send((char*)p->m_pbodyLen, sizeof(int)*2+ len);
+            //*/
             p->update();
             delete p;
         }
     }
-    void connObj::parseBuff(){
+
+    bool connObj::IsTimeout(int nowsec){
+        if(m_lastSec==0){
+            return false;
+        }
+        if( nowsec - m_lastSec >= 11){
+            printf("nowsec: %d lastsec: %d timeout\n", nowsec, m_lastSec);
+            return true;
+        }else{
+            return false;
+        }
+    }
+
+    bool connObj::parseBuff(){
+        if(m_NetOffset!=0){
+            m_lastSec = getsec();
+        }else{
+            return false;
+        }
         m_ReadOffset = 0;
+        int *psize = NULL;
+        int *pmsgid = NULL;
         while(true){
-            if(m_NetOffset-m_ReadOffset<sizeof(m_Msgid)*2){
-                return;
+            if(m_NetOffset-m_ReadOffset<sizeof(int)*2){
+                return true;
             }
-            memcpy(&m_packetSize, m_NetBuffer+m_ReadOffset, sizeof(m_packetSize));
-            memcpy(&m_Msgid, m_NetBuffer+m_ReadOffset+sizeof(m_packetSize), sizeof(m_Msgid));
-            if(m_NetOffset-sizeof(m_packetSize)-sizeof(m_Msgid)-m_ReadOffset < m_packetSize ){
-                return;
+
+            psize = (int*)m_NetBuffer;
+            pmsgid = (int*)(m_NetBuffer+sizeof(int));
+            if(m_NetOffset-sizeof(int)*2-m_ReadOffset < *psize){
+                return true;
             }
-            msgObj *p = new msgObj(m_Msgid, m_packetSize, m_NetBuffer+m_ReadOffset+sizeof(m_packetSize)+sizeof(m_Msgid));
+
+            msgObj *p = new msgObj(pmsgid, psize, m_NetBuffer+m_ReadOffset+sizeof(int)*2);
             qpsMgr::g_pQpsMgr->updateQps(1, p->size());
             m_queueRecvMsg.push(p);
-            m_ReadOffset += m_packetSize+sizeof(m_packetSize)+sizeof(m_Msgid);
+            m_ReadOffset += *psize +sizeof(int)*2;
         }
     }
     int connObj::_OnRead(){
@@ -117,6 +146,7 @@ namespace net{
         fd = _fd;
         rid = 0;
         pid = 0;
+        m_lastSec = 0;
         m_NetOffset = 0;
         m_bChkReadZero = true;
 
@@ -129,8 +159,6 @@ namespace net{
     }
 
     void connObj::ResetVars(){
-        //packet size
-        m_packetSize = 0;
         //msgid 
         m_Msgid = -1;
     }
