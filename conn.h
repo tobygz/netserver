@@ -15,15 +15,15 @@ namespace net{
     //typedef queue<recvBuff>
     class connObj{
         private:
-            int fd;
+            int m_fd;
             unsigned long long rid;
-            int pid;
+            int m_pid;
             queue<msgObj*> m_queueRecvMsg;
             //packet size
             char packetSizeBuf[PACKET_SIZE];
-            int m_Msgid;
+            
             int m_lastSec; //for timeout process
-
+            char m_remoteAddr[64];
 
             void ResetVars();
 
@@ -40,11 +40,12 @@ namespace net{
             int GetFd();
             bool IsTimeout(int sec);
             int OnRead();
-            void OnClose();
+            void OnClose(bool btimeOut=false);
+            void OnInit(char* paddr);
             void dealMsgQueue();
             void resetBuffer();
             bool parseBuff();
-            void send(const char* buf, size_t size);
+            void send(unsigned char* buf, size_t size);
 
     };
 

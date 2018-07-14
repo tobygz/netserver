@@ -16,14 +16,50 @@ namespace net{
     };
 
     class msgObj{
-        public:
         unsigned long long m_uid;
-        int *m_pmsgId;
-        int *m_pbodyLen;
-        char* m_pBody;
-        msgObj(int* pid, int* plen, char* p);
+        unsigned int *m_pmsgId;
+        unsigned int *m_pbodyLen;
+        unsigned char* m_pBody;        
+        public:
+
+        msgObj(unsigned int* pid, unsigned int* plen, unsigned char* p);
+        unsigned int getMsgid(){ return *m_pmsgId;}
+        unsigned int getBodylen(){ return *m_pbodyLen;}
+        unsigned char* getBodyPtr(){return m_pBody;}
         int size();
         void update();
+    };
+
+    class rpcObj{
+            int *m_pLen;
+            unsigned char *m_pbody;
+
+            unsigned char *m_pMsgType;
+            unsigned char *m_pTarget; //end with 0
+            unsigned char *m_pKey;    //end with 0
+            unsigned char *m_pParam;  //end with 0
+            unsigned char *m_pResult; //end with 0
+            unsigned long long *m_pPid;
+            unsigned int *m_pMsgid;
+            unsigned char *m_pBody; 
+            unsigned int *m_pBodyLen;
+
+        public:
+            rpcObj();
+            void decodeBuffer(char* p);
+            static unsigned int encodeBuffer(unsigned char* p,char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen);
+            void update();
+
+            unsigned char getMsgType(){return *m_pMsgType;}
+            unsigned char* getTarget(){ return m_pTarget;}
+            unsigned char* getParam(){ return m_pParam;}
+            unsigned char* getResult(){ return m_pResult;}
+            unsigned long long getPid(){ return *m_pPid;}
+            unsigned int getMsgid(){ return *m_pMsgid;}
+            unsigned int getBodylen(){ return *m_pBodyLen;}
+            unsigned char* getBodyPtr(){ return m_pBody;}
+            
+            
     };
 
     class recvBuff  {
@@ -54,26 +90,6 @@ namespace net{
             int     readString( char* &pStr);
 
             bool    unpack();
-
-            static recvBuff* createLostRecvBuff() {
-                recvBuff *pBuff = new recvBuff( 0 );
-                pBuff->m_eType = eRecvType_lost;
-                return pBuff;
-            }
-
-            static recvBuff* createConnfailRecvBuff() {
-                recvBuff *pBuff = new recvBuff( 0 );
-                pBuff->m_eType = eRecvType_connfail;
-                return pBuff;
-            }
-
-            static recvBuff* createConnsuccRecvBuff() {
-                recvBuff *pBuff = new recvBuff( 0 );
-                pBuff->m_eType = eRecvType_connsucc;
-                return pBuff;
-            }
-
-
     };
 
 }

@@ -7,23 +7,35 @@
 
 #include "qps.h"
 #include "net.h"
+#include "tcpclient.h"
 
 namespace net{
 
     pthread_mutex_t *mutexRecv ; 
 
-    void connObj::OnClose(){
+    void connObj::OnClose(bool btimeOut){
         printf("called onclose fd: %d pid: %d \r\n", this->GetFd(), this->GetPid());
         close(GetFd());
+        if(btimeOut){
+            tcpclientMgr::m_sInst->rpcCallGate((char*)"RegConn", m_pid, 3, NULL, 0);    
+        }else{
+            tcpclientMgr::m_sInst->rpcCallGate((char*)"RegConn", m_pid, 2, NULL, 0);
+        }
     }
 
-    void connObj::send(const char* buf, size_t size){
+    void connObj::OnInit(char* paddr){
+        strcpy(m_remoteAddr, paddr);
+        unsigned int byteLen = strlen(m_remoteAddr);
+        tcpclientMgr::m_sInst->rpcCallGate((char*)"RegConn", m_pid, 1, (unsigned char*)m_remoteAddr, byteLen);
+    }
+
+    void connObj::send(unsigned char* buf, size_t size){
         int sendSize = 0;
         size_t s;
         while(1){
-            s = write(fd, buf+sendSize, size-sendSize);
+            s = write(m_fd, buf+sendSize, size-sendSize);
             if(s==-1){
-                netServer::g_netServer->appendConnClose(fd);
+                netServer::g_netServer->appendConnClose(m_fd);
                 return;
             }
             sendSize += s;
@@ -61,13 +73,22 @@ namespace net{
     void connObj::dealMsgQueue(){
         //qpsMgr::g_pQpsMgr->updateQps(4, m_queueRecvMsg.size());
         int len = 0;
+        unsigned int msgid = 0;
         while(!m_queueRecvMsg.empty()){
             msgObj *p = m_queueRecvMsg.front();
             m_queueRecvMsg.pop();
             //*
-            len = *(int*)(p->m_pbodyLen);
-            send((char*)p->m_pbodyLen, sizeof(int)*2+ len);
+            //len = *(int*)(p->m_pbodyLen);
+            //send((char*)p->m_pbodyLen, sizeof(int)*2+ len);
             //*/
+            msgid = p->getMsgid();
+            if( msgid >=0 && msgid<1999){
+                tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2gate", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
+            }else if(msgid >=2000 && msgid <2999){
+                tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2game", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
+            }else{
+                printf("[ERROR] invalid msgid: %d\n", msgid);
+            }
             p->update();
             delete p;
         }
@@ -92,20 +113,20 @@ namespace net{
             return false;
         }
         m_ReadOffset = 0;
-        int *psize = NULL;
-        int *pmsgid = NULL;
+        unsigned int *psize = NULL;
+        unsigned int *pmsgid = NULL;
         while(true){
             if(m_NetOffset-m_ReadOffset<sizeof(int)*2){
                 return true;
             }
 
-            psize = (int*)m_NetBuffer;
-            pmsgid = (int*)(m_NetBuffer+sizeof(int));
+            psize = (unsigned int*)m_NetBuffer;
+            pmsgid = (unsigned int*)(m_NetBuffer+sizeof(int));
             if(m_NetOffset-sizeof(int)*2-m_ReadOffset < *psize){
                 return true;
             }
 
-            msgObj *p = new msgObj(pmsgid, psize, m_NetBuffer+m_ReadOffset+sizeof(int)*2);
+            msgObj *p = new msgObj(pmsgid, psize, (unsigned char*)(m_NetBuffer+m_ReadOffset+sizeof(int)*2) );
             qpsMgr::g_pQpsMgr->updateQps(1, p->size());
             m_queueRecvMsg.push(p);
             m_ReadOffset += *psize +sizeof(int)*2;
@@ -113,13 +134,13 @@ namespace net{
     }
     int connObj::_OnRead(){
         ssize_t count;
-        count = read (fd, m_NetBuffer+m_NetOffset, BUFFER_SIZE-m_NetOffset);
+        count = read (m_fd, m_NetBuffer+m_NetOffset, BUFFER_SIZE-m_NetOffset);
         if (count == -1)
         {
             //   If errno == EAGAIN, that means we have read all
             //   data. So go back to the main loop. 
             if (errno != EAGAIN){
-                netServer::g_netServer->appendConnClose(fd);
+                netServer::g_netServer->appendConnClose(m_fd);
                 return 0;
             }
             m_bChkReadZero = true;
@@ -129,7 +150,7 @@ namespace net{
         {
             // End of file. The remote has closed the
             //   connection. 
-            netServer::g_netServer->appendConnClose(fd);
+            netServer::g_netServer->appendConnClose(m_fd);
             return 0;
         }else if (count + m_NetOffset< BUFFER_SIZE){
             m_bChkReadZero = false;
@@ -143,9 +164,9 @@ namespace net{
     }
 
     connObj::connObj(int _fd){
-        fd = _fd;
+        m_fd = _fd;
         rid = 0;
-        pid = 0;
+        m_pid = 0;
         m_lastSec = 0;
         m_NetOffset = 0;
         m_bChkReadZero = true;
@@ -159,18 +180,17 @@ namespace net{
     }
 
     void connObj::ResetVars(){
-        //msgid 
-        m_Msgid = -1;
+        
     }
 
     void connObj::SetPid(int _pid){
-        pid = _pid;
+        m_pid = _pid;
     }
     int connObj::GetPid(){
-        return pid;
+        return m_pid;
     }
     int connObj::GetFd(){
-        return fd;
+        return m_fd;
     }
 
 }

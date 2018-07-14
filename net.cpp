@@ -12,6 +12,7 @@
 #include <signal.h>
 
 #include "connmgr.h"
+#include "tcpclient.h"
 #include "qps.h"
 
 #define MAXEVENTS 1024
@@ -19,13 +20,15 @@
 namespace net{
 
     netServer* netServer::g_netServer = new netServer;
+    netServer* netServer::g_netRpcServer = new netServer;
 
     netServer::netServer(){
         mutex = new pthread_mutex_t;
         pthread_mutex_init( mutex, NULL );
+        m_sockfd = -1;
     }
 
-    static int make_socket_non_blocking (int sfd)
+    int make_socket_non_blocking (int sfd)
     {
         int flags, s;
 
@@ -101,12 +104,11 @@ namespace net{
     void netServer::destroy() {
         connObjMgr::g_pConnMgr->destroy();
         usleep(1000);
-        close (sockfd);
+        close (m_sockfd);
     }
 
     int netServer::initSock(char *port) {
         int sfd, s;
-        int efd;
 
         sfd = create_and_bind (port);
         if (sfd == -1)
@@ -115,52 +117,61 @@ namespace net{
         s = make_socket_non_blocking (sfd);
         if (s == -1)
             return -2;
-        this->sockfd = sfd;
-        return 0;
-    }
+        m_sockfd = sfd;
 
-    void* netServer::netThreadFun( void *param) {
-        netServer *pthis = (netServer*) param;
-        struct epoll_event event;
-        struct epoll_event *events;
-
-        int s = listen (pthis->sockfd, SOMAXCONN);
+        s = listen (m_sockfd, SOMAXCONN);
         if (s == -1)
         {
             perror ("listen");
             return NULL;
         }
 
-        int efd = epoll_create1 (0);
-        if (efd == -1)
+        //init epoll
+        initEpoll();
+        epAddFd(m_sockfd);
+        return 0;
+    }
+
+    int netServer::initEpoll(){
+        m_epollfd = epoll_create1 (0);
+        if (m_epollfd == -1)
         {
             perror ("epoll_create");
-            return NULL;
+            return 1;
         }
+        return 0;
+    }
 
-        event.data.fd = pthis->sockfd;
+    int netServer::epAddFd(int fd){
+        struct epoll_event event;
+        event.data.fd = fd;
         event.events = EPOLLIN | EPOLLET;
-        s = epoll_ctl (efd, EPOLL_CTL_ADD, pthis->sockfd, &event);
+        int s = epoll_ctl (m_epollfd, EPOLL_CTL_ADD, fd, &event);
         if (s == -1)
         {
             perror ("epoll_ctl");
             return NULL;
         }
+        return 0;
+    }
+
+    void* netServer::netThreadFun( void *param) {
+        netServer *pthis = (netServer*) param;
 
         // Buffer where events are returned 
-        events = (epoll_event*) calloc (MAXEVENTS, sizeof event);
+        struct epoll_event *events;
+        events = (epoll_event*) calloc (MAXEVENTS, sizeof( epoll_event) );
 
         // The event loop 
         while (1)
         {
             int n, i;
 
-            n = epoll_wait (efd, events, MAXEVENTS, -1);
-            if(n<0){
-                printf("epoll_wait error:%d\r\n", errno);
-                break;
-            }
-            qpsMgr::g_pQpsMgr->updateQps(2, n);
+            do{
+                n = epoll_wait (pthis->m_epollfd, events, MAXEVENTS, -1);
+            }while(n<0&&errno == EINTR );
+            printf("epoll_wait return :%d\r\n", n);
+            //qpsMgr::g_pQpsMgr->updateQps(2, n);
             for (i = 0; i < n; i++)
             {
                 if ((events[i].events & EPOLLERR) ||
@@ -173,7 +184,7 @@ namespace net{
                     continue;
                 }
 
-                else if (pthis->sockfd == events[i].data.fd)
+                else if (pthis->m_sockfd == events[i].data.fd)
                 {
                     // We have a notification on the listening socket, which
                     //   means one or more incoming connections. 
@@ -181,11 +192,11 @@ namespace net{
                     {
                         struct sockaddr in_addr;
                         socklen_t in_len;
-                        int infd;
+                        int infd, s;
                         char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 
                         in_len = sizeof in_addr;
-                        infd = accept (pthis->sockfd, &in_addr, &in_len);
+                        infd = accept (pthis->m_sockfd, &in_addr, &in_len);
                         if (infd == -1)
                         {
                             if ((errno == EAGAIN) ||
@@ -218,16 +229,9 @@ namespace net{
                         if (s == -1)
                             abort ();
 
-                        event.data.fd = infd;
-                        event.events = EPOLLIN | EPOLLET;
-                        s = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
-                        if (s == -1)
-                        {
-                            perror ("epoll_ctl");
-                            abort ();
-                        }
+                        pthis->epAddFd(infd);
                         //new connection maked
-                        pthis->appendConnNew(infd);
+                        pthis->appendConnNew(infd, (char*)hbuf, (char*)sbuf);
                         //break;
                     }
                     continue;
@@ -248,7 +252,7 @@ namespace net{
 
         free (events);
 
-        close (pthis->sockfd);
+        close (pthis->m_sockfd);
         printf("exit epoll thread\n");
 
         return NULL;
@@ -256,7 +260,7 @@ namespace net{
 
     void netServer::queueProcessFun(){
         //*
-        queue<int> queNew;
+        queue<NET_OP_ST *> queNew;
         pthread_mutex_lock(mutex);
 
         while(!this->m_netQueue.empty()){
@@ -266,7 +270,7 @@ namespace net{
                 continue;
             }
             if(pst->op == NEW_CONN){
-                queNew.push(pst->fd);
+                queNew.push(pst);
             }else if(pst->op == DATA_IN){
                 m_readFdMap[pst->fd] = true;
             }else if(pst->op == QUIT_CONN){
@@ -321,10 +325,11 @@ namespace net{
         this->appendSt(pst);
     }
 
-    void netServer::appendConnNew(int fd){
+    void netServer::appendConnNew(int fd, char *pip, char* pport){
         NET_OP_ST *pst = new NET_OP_ST();
         pst->op = NEW_CONN;
         pst->fd = fd;
+        sprintf(pst->paddr, "%s:%s", pip, pport);        
         this->appendSt(pst);
     }
     void netServer::appendConnClose(int fd, bool bmtx){
@@ -345,4 +350,61 @@ namespace net{
         }
         return (char*)"";
     }
+
+
+    void netServer::queueProcessRpc(){
+        //*
+        queue<int> queNew;
+        pthread_mutex_lock(mutex);
+
+        while(!this->m_netQueue.empty()){
+            NET_OP_ST *pst = m_netQueue.front();
+            m_netQueue.pop();
+            if(pst==NULL){
+                continue;
+            }
+            if(pst->op == NEW_CONN){
+                //queNew.push(pst->fd);
+            }else if(pst->op == DATA_IN){
+                m_readFdMap[pst->fd] = true;
+            }else if(pst->op == QUIT_CONN){
+                tcpclientMgr::m_sInst->DelConn(pst->fd);
+                //todo, reconnect server
+                //connObjMgr::g_pConnMgr->DelConn(pst->fd);
+            }
+            delete pst;
+        }
+        printf("called queueProcessRpc m_readFdMap size: %d\n", m_readFdMap.size());
+
+        pthread_mutex_unlock(mutex);
+
+        queue<int> delLst;
+        //process all read event
+        int fd, ret;
+        for(map<int,bool>::iterator iter = m_readFdMap.begin(); iter != m_readFdMap.end(); iter++){
+            fd = (int) iter->first;
+            //从连接管理器中取出
+            tcpclient *pconn = tcpclientMgr::m_sInst->getTcpClientByFd(fd);
+            if (pconn == NULL){
+                delLst.push(fd);
+                continue;
+            }
+            ret = pconn->OnRead();
+            //if( ret == 0 ){
+            delLst.push(fd);
+            //}
+            pconn->dealReadBuffer();
+            pconn->dealSend();
+        }
+
+        while(!delLst.empty()){
+            int nfd = delLst.front();
+            delLst.pop();
+            m_readFdMap.erase(nfd);
+        }
+
+        //qpsMgr::g_pQpsMgr->dumpQpsInfo();
+        //connObjMgr::g_pConnMgr->ChkConnTimeout();
+    }
+
 }

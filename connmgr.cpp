@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "qps.h"
+#include "net.h"
 
 
 namespace net{
@@ -31,19 +32,21 @@ namespace net{
         while(!toLst.empty()){
             connObj *p= toLst.front();
             toLst.pop();
-            DelConn(p->GetFd());
+            DelConn(p->GetFd(), true);
         }
     }
 
-    void connObjMgr::CreateConnBatch(queue<int>* vec) {
+    void connObjMgr::CreateConnBatch(void* p) {
+        queue<NET_OP_ST *> *pvec = (queue<NET_OP_ST *> *)p;
         pthread_mutex_lock(mutex);
-        while(vec->empty()==false){
-            int fd = (int) vec->front();
-            vec->pop();
-            connObj *pconn = new connObj(fd);
+        while(pvec->empty()==false){
+            NET_OP_ST *pst = pvec->front();
+            pvec->pop();
+            connObj *pconn = new connObj(pst->fd);
             pconn->SetPid(maxSessid++);
             m_connMap[pconn->GetPid()] = pconn;
             m_connFdMap[pconn->GetFd()] = pconn;
+            pconn->OnInit( (char*)pst->paddr );
         }
         pthread_mutex_unlock(mutex);
     }
@@ -89,7 +92,7 @@ namespace net{
         return NULL;
     }
 
-    void connObjMgr::DelConn(int fd ){
+    void connObjMgr::DelConn(int fd, bool btimeOut){
         pthread_mutex_lock(mutex);
         connObj *pst = NULL;
         map<int,connObj*>::iterator iter = m_connFdMap.find(fd);
@@ -104,7 +107,7 @@ namespace net{
                 m_connMap.erase(iter);
             }
             pthread_mutex_unlock(mutex);
-            pst->OnClose();
+            pst->OnClose(btimeOut);
             printf("connObjMgr delconn, fd: %d pid: %d\n", fd, pst->GetPid());
             delete pst;
         }
@@ -124,4 +127,32 @@ namespace net{
 
     }
 
+
+    void connObjMgr::SendMsg(unsigned int pid, unsigned char* pmem, unsigned int size){
+        connObj *p = GetConnByPid(pid);
+        if(p!=NULL){
+            p->send( pmem, size );
+        }
+    }
+
+    void connObjMgr::SendMsgAll(unsigned char* pmem, unsigned int size){
+        pthread_mutex_lock(mutex);
+        for(map<int,connObj*>::iterator iter = m_connFdMap.begin(); iter!=m_connFdMap.end(); iter++){
+            connObj* p = iter->second;
+            p->send( pmem, size );
+        }            
+        pthread_mutex_unlock(mutex);
+    }
+
+    void connObjMgr::RegGamePid(unsigned int pid, char* pgame){
+        m_connPidGameMap[pid] = pgame;
+    }
+
+    char* connObjMgr::getGameByPid(int pid){
+        map<int, char*>::iterator it = m_connPidGameMap.find(pid);
+        if( it==m_connPidGameMap.end()){
+            return NULL;
+        }
+        return it->second;
+    }
 }
