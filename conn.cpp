@@ -40,6 +40,7 @@ namespace net{
             }
             sendSize += s;
             if(sendSize == size ){
+                printf("[DEBUG] send to pid: %d fd: %d size: %d\n", m_pid, m_fd, sendSize );
                 return;
             }
         }

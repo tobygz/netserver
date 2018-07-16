@@ -34,12 +34,13 @@ namespace net{
             int *m_pLen;
             unsigned char *m_pbody;
 
+            unsigned char m_pTarget[512]; //end with 0
+            unsigned char m_pKey[512];    //end with 0
+            unsigned char m_pParam[1024] ;  //end with 0
+            unsigned char m_pResult[512] ; //end with 0
+
             unsigned char *m_pMsgType;
-            unsigned char *m_pTarget; //end with 0
-            unsigned char *m_pKey;    //end with 0
-            unsigned char *m_pParam;  //end with 0
-            unsigned char *m_pResult; //end with 0
-            unsigned long long *m_pPid;
+                        unsigned long long *m_pPid;
             unsigned int *m_pMsgid;
             unsigned char *m_pBody; 
             unsigned int *m_pBodyLen;
@@ -49,6 +50,7 @@ namespace net{
             void decodeBuffer(char* p);
             static unsigned int encodeBuffer(unsigned char* p,char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen);
             void update();
+            void ToString();
 
             unsigned char getMsgType(){return *m_pMsgType;}
             unsigned char* getTarget(){ return m_pTarget;}

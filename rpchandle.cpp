@@ -47,6 +47,7 @@ namespace net{
             return;
 		}
 
+        printf("[DEBUG] process rpc name: %s\n", pobj->getTarget() );
 
 		if(it!= m_mapHandler.end()){
 			(this->*it->second)(pobj);
@@ -58,7 +59,7 @@ namespace net{
 	}
 
     int rpcHandle::onPushMsg2Client(rpcObj* pobj){
-    	printf("called onPushMsg2Client\n");
+    	printf("called onPushMsg2Client pid: %d bodylen: %d msgid: %d\n", pobj->getPid(), pobj->getBodylen(), pobj->getMsgid());
     	connObjMgr::g_pConnMgr->SendMsg( (unsigned int)pobj->getPid(), pobj->getBodyPtr(), pobj->getBodylen() );
     	/*
     		pid := request.GetPid()

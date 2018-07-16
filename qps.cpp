@@ -55,7 +55,7 @@ namespace net{
 
     void qpsMgr::dumpQpsInfo(){
         long long nowMs = getms();
-        if(nowMs - m_lastMs<1000){
+        if(nowMs - m_lastMs<5000){
             return;
         }
         m_lastMs = nowMs;

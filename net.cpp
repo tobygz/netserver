@@ -193,7 +193,7 @@ namespace net{
                         struct sockaddr in_addr;
                         socklen_t in_len;
                         int infd, s;
-                        char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+                        char hbuf[NI_MAXHOST]={0}, sbuf[NI_MAXSERV]={0};
 
                         in_len = sizeof in_addr;
                         infd = accept (pthis->m_sockfd, &in_addr, &in_len);
@@ -273,10 +273,11 @@ namespace net{
                 queNew.push(pst);
             }else if(pst->op == DATA_IN){
                 m_readFdMap[pst->fd] = true;
+                delete pst;
             }else if(pst->op == QUIT_CONN){
                 connObjMgr::g_pConnMgr->DelConn(pst->fd);
+                delete pst;
             }
-            delete pst;
         }
 
         pthread_mutex_unlock(mutex);
@@ -312,6 +313,7 @@ namespace net{
         if(bmtx){
             pthread_mutex_lock(mutex);
         }
+        printf("[DEBUG] appendSt fd: %d op: %s\n", pst->fd, GetOpType(pst->op) );
         m_netQueue.push(pst);
         if(bmtx){
             pthread_mutex_unlock(mutex);
@@ -320,6 +322,7 @@ namespace net{
 
     void netServer::appendDataIn(int fd){
         NET_OP_ST *pst = new NET_OP_ST();
+        memset(pst,0, sizeof(NET_OP_ST));
         pst->op = DATA_IN;
         pst->fd = fd;
         this->appendSt(pst);
@@ -327,13 +330,16 @@ namespace net{
 
     void netServer::appendConnNew(int fd, char *pip, char* pport){
         NET_OP_ST *pst = new NET_OP_ST();
+        memset(pst,0, sizeof(NET_OP_ST));
         pst->op = NEW_CONN;
         pst->fd = fd;
         sprintf(pst->paddr, "%s:%s", pip, pport);        
+        printf("[appendConnNew] fd: %d addr: %s\n", fd, pst->paddr );
         this->appendSt(pst);
     }
     void netServer::appendConnClose(int fd, bool bmtx){
         NET_OP_ST *pst = new NET_OP_ST();
+        memset(pst,0, sizeof(NET_OP_ST));
         pst->op = QUIT_CONN;
         pst->fd = fd;
         this->appendSt(pst, bmtx);
@@ -374,7 +380,7 @@ namespace net{
             }
             delete pst;
         }
-        printf("called queueProcessRpc m_readFdMap size: %d\n", m_readFdMap.size());
+        //printf("called queueProcessRpc m_readFdMap size: %d\n", m_readFdMap.size());
 
         pthread_mutex_unlock(mutex);
 

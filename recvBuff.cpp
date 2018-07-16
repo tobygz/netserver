@@ -20,9 +20,11 @@ namespace net{
         m_pbodyLen = plen;
         m_pBody = p;
     }
+
     void msgObj::update(){
-        //OUTPUT_FUN("[NET] msgObj uid: %d update msgid: %d bodylen: %d\n",m_uid, m_msgId, m_bodyLen );
+        OUTPUT_FUN("[NET] msgObj uid: %d update msgid: %d bodylen: %d\n",m_uid, *m_pmsgId, *m_pbodyLen );
     }
+
     int msgObj::size(){
         return *m_pbodyLen+8;
     }
@@ -33,10 +35,12 @@ namespace net{
         m_pbody = NULL;
 
         m_pMsgType = NULL;
-        m_pTarget = NULL; //end with 0
-        m_pKey = NULL;    //end with 0
-        m_pParam= NULL;  //end with 0
-        m_pResult=NULL; //end with 0
+
+        memset(m_pTarget,0,sizeof(m_pTarget));
+        memset(m_pKey,0,sizeof(m_pKey));
+        memset(m_pParam,0,sizeof(m_pParam));
+        memset(m_pResult,0,sizeof(m_pResult));
+        
         m_pPid = NULL;
         m_pMsgid = NULL;
         m_pBody = NULL; 
@@ -51,28 +55,34 @@ namespace net{
         }
     }
 
+    void rpcObj::ToString(){
+        char info[1024] = {0};
+        sprintf(info,"target: %s key: %s param: %s result: %s msgid: %d bodylen: %d\n", m_pTarget, m_pKey,m_pParam,m_pResult, *m_pMsgid,*m_pBodyLen);
+        printf("recobj tostring: %s", info);
+
+    }
     void rpcObj::decodeBuffer(char* p){
         m_pLen = (int*)p;
         m_pbody = (unsigned char*)(p+ sizeof(int));
 
-        //msg
+        //msgtype
         m_pMsgType = m_pbody;
 
         //key
         unsigned char *plen = (unsigned char*)(m_pbody+1);
-        m_pKey = (unsigned char*)(m_pbody+2);
+        memcpy(m_pKey, m_pbody+2, *plen);
 
         //target
         unsigned char *plenTar = (unsigned char*)(m_pbody+2+*plen);
-        m_pTarget = (unsigned char*)(m_pbody+3+*plen);
+        memcpy(m_pTarget,m_pbody+3+*plen, *plenTar);
 
         //param
         unsigned char *plenPa = (unsigned char*)(m_pbody+3+*plen + *plenTar);
-        m_pParam = (unsigned char*)(m_pbody+4+*plen + *plenTar);
+        memcpy(m_pParam,m_pbody+4+*plen+*plenTar, *plenPa);
 
         //result
         unsigned char *plenRes = (unsigned char*)(m_pbody+4+*plen + *plenTar + *plenPa);
-        m_pResult = (unsigned char*)(m_pbody+5+*plen + *plenTar + *plenPa);
+        memcpy(m_pResult,m_pbody+4+*plen+*plenTar+*plenPa, *plenRes);
 
         m_pPid = (unsigned long long*)(m_pbody+5+*plen + *plenTar + *plenPa + *plenRes);
         m_pMsgid= (unsigned int*)(m_pbody+5+*plen + *plenTar + *plenPa +*plenRes+ sizeof(unsigned long long));
@@ -80,49 +90,52 @@ namespace net{
         m_pBodyLen = (unsigned int*)(m_pbody+5+*plen + *plenTar + *plenPa + *plenRes + sizeof(unsigned long long) + sizeof(unsigned int));
         m_pBody= (unsigned char*)(m_pbody+5+*plen + *plenTar + *plenPa + *plenRes + sizeof(unsigned long long) + sizeof(unsigned int) + sizeof(unsigned int) );
 
-
     }
 
     unsigned int rpcObj::encodeBuffer(unsigned char* p,char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen){
         unsigned char *pSize = (unsigned char* )p;
 
-        unsigned char* param = (unsigned char*)"defparam";
-        unsigned char* result = (unsigned char*)"defres";        
+        const char* param = (const char*)"net1";
+        const char* result = (const char*)"defres";        
+        const char* key = (const char*)"";        
 
         unsigned char msgtp = 0;
         //msgtype
         memcpy(p+sizeof(int), &msgtp, 1);
 
         //key
-        memcpy( p+sizeof(int)+1, &msgtp, 1 );
+        unsigned char len = strlen(key);
+        memcpy( p+sizeof(int)+1, &len, 1 );
+        memcpy( p+sizeof(int)+2, key, len );
         //ignore cpy keyval, for it's empty
         
         //target
-        unsigned char len = strlen(target);
-        memcpy( p+sizeof(int)+2, &len, 1 );
-        memcpy( p+sizeof(int)+3, target, len );
+        unsigned char len1 = strlen(target);
+        memcpy( p+sizeof(int)+2+len, &len1, 1 );
+        memcpy( p+sizeof(int)+3+len, target, len1 );
 
         //param
-        unsigned char lenpa = strlen((const char*)param);
-        memcpy( p+sizeof(int)+3+len, &lenpa, 1 );   
-        memcpy( p+sizeof(int)+4+len, param, lenpa );  
+        unsigned char lenpa = strlen(param);
+        memcpy( p+sizeof(int)+3+len+len1, &lenpa, 1 );   
+        memcpy( p+sizeof(int)+4+len+len1, param, lenpa );  
+        printf("write len: %d len1: %d lenpa: %d\n", len, len1, lenpa );
 
         //res
-        unsigned char lenres = strlen((const char*)result);
-        memcpy( p+sizeof(int)+4+len+lenpa, &lenres, 1 );   
-        memcpy( p+sizeof(int)+5+len+lenpa, result, lenres );  
+        unsigned char lenres = strlen(result);
+        memcpy( p+sizeof(int)+4+len1+len+lenpa, &lenres, 1 );   
+        memcpy( p+sizeof(int)+5+len1+len+lenpa, result, lenres );  
 
         //pid
-        memcpy( p+sizeof(int)+5+len+lenpa+lenres, &pid, sizeof(pid) );  
+        memcpy( p+sizeof(int)+5+len1+len+lenpa+lenres, &pid, sizeof(pid) );  
         //msgid        
-        memcpy( p+sizeof(int)+5+len+lenpa+lenres+sizeof(pid), &msgid, sizeof(msgid) );  
+        memcpy( p+sizeof(int)+5+len1+len+lenpa+lenres+sizeof(pid), &msgid, sizeof(msgid) );  
         
         //bodylen
-        memcpy( p+sizeof(int)+5+len+lenpa+lenres+sizeof(pid)+sizeof(msgid), &byteLen, sizeof(byteLen) ); 
+        memcpy( p+sizeof(int)+5+len1+len+lenpa+lenres+sizeof(pid)+sizeof(msgid), &byteLen, sizeof(byteLen) ); 
         //body
-        memcpy( p+sizeof(int)+5+len+lenpa+lenres+sizeof(pid)+sizeof(msgid)+sizeof(byteLen), pbyte, byteLen ); 
+        memcpy( p+sizeof(int)+5+len1+len+lenpa+lenres+sizeof(pid)+sizeof(msgid)+sizeof(byteLen), pbyte, byteLen ); 
 
-        unsigned int size = sizeof(int)+5+len+lenpa+lenres+sizeof(pid)+sizeof(msgid)+sizeof(byteLen)+byteLen;
+        unsigned int size = sizeof(int)+5+len1+len+lenpa+lenres+sizeof(pid)+sizeof(msgid)+sizeof(byteLen)+byteLen;
         memcpy(pSize, &size, sizeof(size));
         return size + sizeof(size);
     }

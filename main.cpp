@@ -21,7 +21,8 @@ pthread_t InitRpc(){
         printf ("Create pthread error!\n");
         exit (1);
     }
-    tcpclientMgr::m_sInst->createTcpclient((char*)"gate1", (char*)"127.0.0.1", 6011);
+    tcpclientMgr::m_sInst->createTcpclient((char*)"gate1", (char*)"127.0.0.1", 20000);
+    tcpclientMgr::m_sInst->createTcpclient((char*)"game1", (char*)"127.0.0.1", 21020);
     return id;
 
 }
@@ -56,7 +57,7 @@ int main(){
     signal(SIGQUIT, onQuit);
 
     //for listen socket
-    char* port = (char*)"6010";
+    char* port = (char*)"21009";
     pthread_t id = InitSocketListen(port);
     pthread_t idRpc = InitRpc();
 
@@ -66,7 +67,8 @@ int main(){
         }
         netServer::g_netServer->queueProcessFun();
         netServer::g_netRpcServer->queueProcessRpc();
-        usleep(1000000);
+        tcpclientMgr::m_sInst->update();
+        usleep(1);
     }
 
     netServer::g_netServer->destroy();

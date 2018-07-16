@@ -25,8 +25,11 @@ namespace net{
         //init epoll_obj
 
     }
-    void tcpclientMgr::update(){
 
+    void tcpclientMgr::update(){
+        for( map<char*, tcpclient*>::iterator it = m_mapTcpClient.begin(); it!=m_mapTcpClient.end(); it++){
+            it->second->dealSend();
+        }
     }
 
     tcpclient* tcpclientMgr::createTcpclient(char* name, char* ip, int port){
@@ -35,6 +38,7 @@ namespace net{
         pclient->doconnect();
         m_mapTcpClient[name] = pclient;
         m_mapFdTcpClient[pclient->GetFd()] = pclient;
+        printf("[tcpclientMgr] createTcpclient name: %s ip: %s fd: %d\n", name, ip, pclient->GetFd() );
     }
 
 
@@ -58,11 +62,13 @@ namespace net{
     }
 
     tcpclient* tcpclientMgr::getTcpClient(char* name){
-        map<char*, tcpclient*>::iterator it = m_mapTcpClient.find(name);
-        if( it == m_mapTcpClient.end() ){
-            return NULL;
+        for( map<char*, tcpclient*>::iterator it = m_mapTcpClient.begin(); it!= m_mapTcpClient.end(); it++ ){
+            if( strcmp( name, it->first ) == 0 ){
+                return it->second;
+            }
         }
-        return it->second;
+        return NULL;
+
     }
     tcpclient* tcpclientMgr::getTcpClientByFd(int fd){
         map<int, tcpclient*>::iterator it = m_mapFdTcpClient.find(fd);
@@ -118,6 +124,9 @@ namespace net{
         make_socket_non_blocking(m_sock);
 
         netServer::g_netRpcServer->epAddFd(m_sock);
+
+        //send takeproxy
+        AppendSend((char*)"TakeProxy", 0, 0, NULL, 0);    
         return 0;
     }
 
@@ -167,6 +176,7 @@ namespace net{
             headlen = *(int*)(m_recvBuffer+offset);
             p = new rpcObj();
             p->decodeBuffer(m_recvBuffer+offset );
+            p->ToString();
             m_queRpcObj.push(p);
             offset += sizeof(int) + headlen;
         }
@@ -186,7 +196,7 @@ namespace net{
     }
 
     int tcpclient::handleRpcObj(rpcObj *p){
-        p->update();
+        //p->update();
         rpcHandle::m_pInst->process(p);
         return 0;
     }
@@ -194,6 +204,7 @@ namespace net{
     void tcpclient::AppendSend(char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen){                
         int offset = rpcObj::encodeBuffer((unsigned char*)m_sendBuffer+m_sendOffset, target, pid, msgid, pbyte, byteLen);
         m_sendOffset += offset;
+        printf("tcpclient::AppendSend mname: %s target: %s offset: %d m_offset: %d\n",m_name, target, offset, m_sendOffset );
     }
 
     int tcpclient::dealSend(){
@@ -223,6 +234,7 @@ namespace net{
                 return 0;
             }
         }        
+        printf("dosend size: %d m_name: %s\n", size, m_name );
         return 0;
     }
 

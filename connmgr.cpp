@@ -13,7 +13,7 @@ namespace net{
     pthread_mutex_t *mutex ; 
 
     connObjMgr::connObjMgr(){
-        maxSessid = 0;
+        maxSessid = 1;
         mutex = new pthread_mutex_t;
         pthread_mutex_init( mutex, NULL );
     }
@@ -47,6 +47,8 @@ namespace net{
             m_connMap[pconn->GetPid()] = pconn;
             m_connFdMap[pconn->GetFd()] = pconn;
             pconn->OnInit( (char*)pst->paddr );
+            delete pst;
+            printf("add pconn fd: %d pst->fd: %d\n", pconn->GetFd(), pst->fd);
         }
         pthread_mutex_unlock(mutex);
     }
@@ -71,6 +73,7 @@ namespace net{
 
     connObj* connObjMgr::GetConn(int fd ){
         pthread_mutex_lock(mutex);
+
         map<int,connObj*>::iterator iter = m_connFdMap.find(fd);
         if ( iter != m_connFdMap.end() ){
             connObj* p = iter->second;
@@ -83,12 +86,15 @@ namespace net{
 
 
     connObj* connObjMgr::GetConnByPid(int pid ){
+
         pthread_mutex_lock(mutex);
+
         map<int,connObj*>::iterator iter = m_connMap.find(pid);
-        pthread_mutex_unlock(mutex);
         if ( iter != m_connMap.end() ){
+            pthread_mutex_unlock(mutex);
             return (connObj*) iter->second;
         }
+        pthread_mutex_unlock(mutex);
         return NULL;
     }
 
@@ -130,7 +136,9 @@ namespace net{
 
     void connObjMgr::SendMsg(unsigned int pid, unsigned char* pmem, unsigned int size){
         connObj *p = GetConnByPid(pid);
-        if(p!=NULL){
+        if(p==NULL){
+            printf("[ERROR] connObjMgr::SendMsg failed pid: %d len: %d\n", pid, size );
+        }else{
             p->send( pmem, size );
         }
     }
