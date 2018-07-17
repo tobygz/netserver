@@ -83,7 +83,6 @@ namespace net{
             s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
             if (s == 0)
             {
-                // We managed to bind successfully! 
                 break;
             }
 
@@ -92,7 +91,7 @@ namespace net{
 
         if (rp == NULL)
         {
-            fprintf (stderr, "Could not bind: %d\n", errno);
+            fprintf (stderr, "Could not bind: %s errno: %d\n",port, errno);
             return -1;
         }
 
@@ -123,7 +122,7 @@ namespace net{
         if (s == -1)
         {
             perror ("listen");
-            return NULL;
+            return -3;
         }
 
         //init epoll
@@ -136,13 +135,18 @@ namespace net{
         m_epollfd = epoll_create1 (0);
         if (m_epollfd == -1)
         {
-            perror ("epoll_create");
+            perror ("epoll_create failed");
             return 1;
         }
         return 0;
     }
 
-    int netServer::epAddFd(int fd){
+    int netServer::epAddFd(int fd, char* pname){
+        if(pname != NULL){
+            if(strlen(pname)!=0){
+                m_rpcFdMap[fd] = string(pname);
+            }
+        }
         struct epoll_event event;
         event.data.fd = fd;
         event.events = EPOLLIN | EPOLLET;
@@ -150,7 +154,7 @@ namespace net{
         if (s == -1)
         {
             perror ("epoll_ctl");
-            return NULL;
+            return 1;
         }
         return 0;
     }
@@ -170,7 +174,6 @@ namespace net{
             do{
                 n = epoll_wait (pthis->m_epollfd, events, MAXEVENTS, -1);
             }while(n<0&&errno == EINTR );
-            printf("epoll_wait return :%d\r\n", n);
             //qpsMgr::g_pQpsMgr->updateQps(2, n);
             for (i = 0; i < n; i++)
             {
@@ -186,8 +189,6 @@ namespace net{
 
                 else if (pthis->m_sockfd == events[i].data.fd)
                 {
-                    // We have a notification on the listening socket, which
-                    //   means one or more incoming connections. 
                     while (1)
                     {
                         struct sockaddr in_addr;
@@ -199,11 +200,8 @@ namespace net{
                         infd = accept (pthis->m_sockfd, &in_addr, &in_len);
                         if (infd == -1)
                         {
-                            if ((errno == EAGAIN) ||
-                                    (errno == EWOULDBLOCK))
+                            if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
                             {
-                                // We have processed all incoming
-                                //  connections. 
                                 break;
                             }
                             else
@@ -219,12 +217,9 @@ namespace net{
                                 NI_NUMERICHOST | NI_NUMERICSERV);
                         if (s == 0)
                         {
-                            printf("%.1f Accepted connection on descriptor %d "
-                                    "(host=%s, port=%s)\r\n",getms()/1000.0, infd, hbuf, sbuf);
+                            //printf("%.1f Accepted connection on descriptor %d " "(host=%s, port=%s)\r\n",getms()/1000.0, infd, hbuf, sbuf);
                         }
 
-                        // Make the incoming socket non-blocking and add it to the
-                        // list of fds to monitor. 
                         s = make_socket_non_blocking (infd);
                         if (s == -1)
                             abort ();
@@ -232,18 +227,11 @@ namespace net{
                         pthis->epAddFd(infd);
                         //new connection maked
                         pthis->appendConnNew(infd, (char*)hbuf, (char*)sbuf);
-                        //break;
                     }
                     continue;
                 }
                 else
                 {
-                    // We have data on the fd waiting to be read. Read and
-                    //   display it. We must read whatever data is available
-                    //   completely, as we are running in edge-triggered mode
-                    //   and won't get a notification again for the same
-                    //   data. 
-                    //int done = 0;
                     pthis->appendDataIn(events[i].data.fd);
 
                 }
@@ -305,6 +293,9 @@ namespace net{
             m_readFdMap.erase(nfd);
         }
 
+        //process all write event
+        connObjMgr::g_pConnMgr->processAllWrite();
+
         qpsMgr::g_pQpsMgr->dumpQpsInfo();
         connObjMgr::g_pConnMgr->ChkConnTimeout();
     }
@@ -313,8 +304,14 @@ namespace net{
         if(bmtx){
             pthread_mutex_lock(mutex);
         }
-        printf("[DEBUG] appendSt fd: %d op: %s\n", pst->fd, GetOpType(pst->op) );
-        m_netQueue.push(pst);
+        if( m_rpcFdMap.find(pst->fd) != m_rpcFdMap.end()){
+            pst->bRpc = true;
+            m_netQueueRpc.push(pst);
+        }else{
+            pst->bRpc = false;
+            m_netQueue.push(pst);
+        }
+
         if(bmtx){
             pthread_mutex_unlock(mutex);
         }
@@ -325,16 +322,16 @@ namespace net{
         memset(pst,0, sizeof(NET_OP_ST));
         pst->op = DATA_IN;
         pst->fd = fd;
-        this->appendSt(pst);
+                this->appendSt(pst);
     }
 
     void netServer::appendConnNew(int fd, char *pip, char* pport){
         NET_OP_ST *pst = new NET_OP_ST();
         memset(pst,0, sizeof(NET_OP_ST));
+            pst->bRpc = false;
         pst->op = NEW_CONN;
         pst->fd = fd;
         sprintf(pst->paddr, "%s:%s", pip, pport);        
-        printf("[appendConnNew] fd: %d addr: %s\n", fd, pst->paddr );
         this->appendSt(pst);
     }
     void netServer::appendConnClose(int fd, bool bmtx){
@@ -359,24 +356,20 @@ namespace net{
 
 
     void netServer::queueProcessRpc(){
-        //*
         queue<int> queNew;
         pthread_mutex_lock(mutex);
 
-        while(!this->m_netQueue.empty()){
-            NET_OP_ST *pst = m_netQueue.front();
-            m_netQueue.pop();
+        while(!this->m_netQueueRpc.empty()){
+            NET_OP_ST *pst = m_netQueueRpc.front();
+            m_netQueueRpc.pop();
             if(pst==NULL){
                 continue;
             }
             if(pst->op == NEW_CONN){
-                //queNew.push(pst->fd);
             }else if(pst->op == DATA_IN){
                 m_readFdMap[pst->fd] = true;
             }else if(pst->op == QUIT_CONN){
                 tcpclientMgr::m_sInst->DelConn(pst->fd);
-                //todo, reconnect server
-                //connObjMgr::g_pConnMgr->DelConn(pst->fd);
             }
             delete pst;
         }
@@ -389,16 +382,13 @@ namespace net{
         int fd, ret;
         for(map<int,bool>::iterator iter = m_readFdMap.begin(); iter != m_readFdMap.end(); iter++){
             fd = (int) iter->first;
-            //从连接管理器中取出
             tcpclient *pconn = tcpclientMgr::m_sInst->getTcpClientByFd(fd);
             if (pconn == NULL){
                 delLst.push(fd);
                 continue;
             }
             ret = pconn->OnRead();
-            //if( ret == 0 ){
             delLst.push(fd);
-            //}
             pconn->dealReadBuffer();
             pconn->dealSend();
         }
@@ -409,8 +399,6 @@ namespace net{
             m_readFdMap.erase(nfd);
         }
 
-        //qpsMgr::g_pQpsMgr->dumpQpsInfo();
-        //connObjMgr::g_pConnMgr->ChkConnTimeout();
     }
 
 }

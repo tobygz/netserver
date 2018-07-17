@@ -22,7 +22,8 @@ namespace net{
         unsigned char* m_pBody;        
         public:
 
-        msgObj(unsigned int* pid, unsigned int* plen, unsigned char* p);
+        msgObj(unsigned int* msgid, unsigned int* plen, unsigned char* p);
+        ~msgObj();
         unsigned int getMsgid(){ return *m_pmsgId;}
         unsigned int getBodylen(){ return *m_pbodyLen;}
         unsigned char* getBodyPtr(){return m_pBody;}
@@ -48,7 +49,9 @@ namespace net{
         public:
             rpcObj();
             void decodeBuffer(char* p);
-            static unsigned int encodeBuffer(unsigned char* p,char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen);
+            static unsigned int encodeBuffer(unsigned char* p,char* target, 
+                    unsigned long long pid, unsigned int msgid, unsigned char* pbyte, 
+                    unsigned int byteLen);
             void update();
             void ToString();
 

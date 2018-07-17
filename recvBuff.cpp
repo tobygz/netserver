@@ -14,11 +14,13 @@ namespace net{
 
     /* msgObj */
     unsigned long long g_uid = 0;
-    msgObj::msgObj(unsigned int* pid, unsigned int* plen, unsigned char* p){
+    msgObj::msgObj(unsigned int* msgid, unsigned int* plen, unsigned char* p){
         m_uid = g_uid++;
-        m_pmsgId = pid;
+        m_pmsgId = msgid;
         m_pbodyLen = plen;
         m_pBody = p;
+    }
+    msgObj::~msgObj(){
     }
 
     void msgObj::update(){
@@ -58,7 +60,7 @@ namespace net{
     void rpcObj::ToString(){
         char info[1024] = {0};
         sprintf(info,"target: %s key: %s param: %s result: %s msgid: %d bodylen: %d\n", m_pTarget, m_pKey,m_pParam,m_pResult, *m_pMsgid,*m_pBodyLen);
-        printf("recobj tostring: %s", info);
+        printf("[rpcobj] tostring: %s", info);
 
     }
     void rpcObj::decodeBuffer(char* p){
@@ -118,7 +120,6 @@ namespace net{
         unsigned char lenpa = strlen(param);
         memcpy( p+sizeof(int)+3+len+len1, &lenpa, 1 );   
         memcpy( p+sizeof(int)+4+len+len1, param, lenpa );  
-        printf("write len: %d len1: %d lenpa: %d\n", len, len1, lenpa );
 
         //res
         unsigned char lenres = strlen(result);
@@ -190,8 +191,6 @@ namespace net{
         m_pBuffer = (char*)malloc(m_iBuffSize);
 
         m_pPointer = m_pBuffer + body_offset;
-
-        //memcpy(m_pBuffer, &size, sizeof(int));
 
         memcpy(m_pBuffer, &pt, sizeof(short));
 

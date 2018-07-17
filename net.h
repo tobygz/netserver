@@ -4,8 +4,11 @@
 #include <queue>
 #include <map>
 #include <pthread.h>
+#include <iostream>
+#include <string>
 
 
+using namespace std;
 namespace net{
 
     enum NET_OP {
@@ -19,6 +22,7 @@ namespace net{
         NET_OP op;
         int fd;
         char paddr[64];
+        bool bRpc;
     };
 
 
@@ -27,7 +31,9 @@ namespace net{
 
     class netServer{
         std::queue<NET_OP_ST*> m_netQueue;
+        std::queue<NET_OP_ST*> m_netQueueRpc;
         std::map<int,bool> m_readFdMap;
+        std::map<int,string> m_rpcFdMap; //rpc fd->name
         pthread_mutex_t *mutex ; 
         public:
         static netServer *g_netServer; //for client
@@ -35,7 +41,8 @@ namespace net{
         netServer();
         int m_sockfd;
         int m_epollfd;
-        int epAddFd(int fd);
+
+        int epAddFd(int fd, char* pname=NULL);
         int initSock(char *port);
         int initEpoll();
         void destroy();

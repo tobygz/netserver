@@ -38,12 +38,12 @@ namespace net{
         pclient->doconnect();
         m_mapTcpClient[name] = pclient;
         m_mapFdTcpClient[pclient->GetFd()] = pclient;
-        printf("[tcpclientMgr] createTcpclient name: %s ip: %s fd: %d\n", name, ip, pclient->GetFd() );
+        printf("[TCPCLIENTMGR] createTcpclient name: %s ip: %s fd: %d\n", name, ip, pclient->GetFd() );
     }
 
 
     void tcpclientMgr::rpcCallGate(char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen){
-        tcpclient* pclient = getTcpClient((char*)"gate1");
+        tcpclient* pclient = getTcpClient((const char*)"gate1");
         if(!pclient ){
             printf("[ERROR] rpcCallGate failed, find gate1 failed\n");
             return;
@@ -52,16 +52,16 @@ namespace net{
     }
 
     void tcpclientMgr::rpcCallGame(char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen){
-        char *name = connObjMgr::g_pConnMgr->getGameByPid((unsigned int)pid);
-        tcpclient* pclient = getTcpClient(name);
+        string sname = connObjMgr::g_pConnMgr->getGameByPid((unsigned int)pid);
+        tcpclient* pclient = getTcpClient(sname.c_str());
         if(!pclient ){
-            printf("[ERROR] rpcCallGame rpc: %s failed, find game: %s failed\n", target, name);
+            printf("[ERROR] rpcCallGame rpc: %s failed, find game: %s failed\n", target, sname.c_str());
             return;
         }
         pclient->AppendSend( target, pid, msgid, pbyte, byteLen );               
     }
 
-    tcpclient* tcpclientMgr::getTcpClient(char* name){
+    tcpclient* tcpclientMgr::getTcpClient(const char* name){
         for( map<char*, tcpclient*>::iterator it = m_mapTcpClient.begin(); it!= m_mapTcpClient.end(); it++ ){
             if( strcmp( name, it->first ) == 0 ){
                 return it->second;
@@ -120,10 +120,10 @@ namespace net{
             raise(SIGINT);
             return 1;
         }
-        printf("%s succ connect to server ip: %s:%d\n",m_name, m_ip, m_port);
+        printf("[TCPCLIENT] %s succ connect to server ip: %s:%d\n",m_name, m_ip, m_port);
         make_socket_non_blocking(m_sock);
 
-        netServer::g_netRpcServer->epAddFd(m_sock);
+        netServer::g_netServer->epAddFd(m_sock,(char*)m_name);
 
         //send takeproxy
         AppendSend((char*)"TakeProxy", 0, 0, NULL, 0);    
@@ -136,13 +136,13 @@ namespace net{
             return 1;
         }
         ssize_t count = read (m_sock, m_recvBuffer+m_recvOffset, RPC_BUFF_SIZE-m_recvOffset);
-        printf("tcpclient::OnRead read size: %d\n", count);
+        printf("[TCPCLIENT] tcpclient::OnRead read size: %d\n", count);
         if (count == -1)
         {
             //   If errno == EAGAIN, that means we have read all
             //   data. So go back to the main loop. 
             if (errno != EAGAIN){
-                netServer::g_netRpcServer->appendConnClose(m_sock);
+                netServer::g_netServer->appendConnClose(m_sock);
                 return 0;
             }
             return 1;
@@ -151,10 +151,9 @@ namespace net{
         {
             // End of file. The remote has closed the
             //   connection. 
-            netServer::g_netRpcServer->appendConnClose(m_sock);
+            netServer::g_netServer->appendConnClose(m_sock);
             return 0;
         }else {
-            //todo add fatal error here!!!
             m_recvOffset += count;
         }
 
@@ -171,6 +170,7 @@ namespace net{
         while(true){
             if( m_recvOffset-offset<4 ){
                 //todo, error here, rpc not allowed combine package
+                printf("[FATAL] rpc not allowed combine package\n");
                 break;
             }
             headlen = *(int*)(m_recvBuffer+offset);
@@ -204,7 +204,7 @@ namespace net{
     void tcpclient::AppendSend(char* target, unsigned long long pid, unsigned int msgid, unsigned char* pbyte, unsigned int byteLen){                
         int offset = rpcObj::encodeBuffer((unsigned char*)m_sendBuffer+m_sendOffset, target, pid, msgid, pbyte, byteLen);
         m_sendOffset += offset;
-        printf("tcpclient::AppendSend mname: %s target: %s offset: %d m_offset: %d\n",m_name, target, offset, m_sendOffset );
+        //printf("tcpclient::AppendSend mname: %s target: %s offset: %d m_offset: %d\n",m_name, target, offset, m_sendOffset );
     }
 
     int tcpclient::dealSend(){

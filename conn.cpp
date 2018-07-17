@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 
 #include "qps.h"
@@ -29,19 +30,42 @@ namespace net{
         tcpclientMgr::m_sInst->rpcCallGate((char*)"RegConn", m_pid, 1, (unsigned char*)m_remoteAddr, byteLen);
     }
 
-    void connObj::send(unsigned char* buf, size_t size){
-        int sendSize = 0;
+    int connObj::send(unsigned char* buf, size_t size){
+        if( size == 0 && m_sendBufLen == 0){
+            return 0;
+        }
+        if( buf != NULL ){
+            memcpy(m_sendBuf+m_sendBufLen, buf, size );
+        }
+        m_sendBufLen += size;
+        assert(m_sendBufOffset>=0);
+        assert(m_sendBufLen>=0);
         size_t s;
+        size_t nowSize=0;
+        const size_t SEND_SIZE=64*1024;
         while(1){
-            s = write(m_fd, buf+sendSize, size-sendSize);
-            if(s==-1){
-                netServer::g_netServer->appendConnClose(m_fd);
-                return;
+            if(m_sendBufLen-m_sendBufOffset>SEND_SIZE){
+                nowSize = SEND_SIZE;
+            }else{
+                nowSize = m_sendBufLen-m_sendBufOffset;
             }
-            sendSize += s;
-            if(sendSize == size ){
-                printf("[DEBUG] send to pid: %d fd: %d size: %d\n", m_pid, m_fd, sendSize );
-                return;
+            s = write(m_fd, m_sendBuf+m_sendBufOffset, nowSize);
+            if( s == -1 && errno == EAGAIN ){
+                connObjMgr::g_pConnMgr->AddWriteConn(m_fd, this);
+                return -1;
+            }
+            if(s==-1&&errno != EAGAIN ){
+                netServer::g_netServer->appendConnClose(m_fd);
+                return 0;
+            }
+            assert(s>0);
+            assert(m_sendBufOffset>=0);
+            assert(m_sendBufLen>=0);
+            m_sendBufOffset += s;
+            if(m_sendBufOffset >= m_sendBufLen){
+                m_sendBufOffset = 0;
+                m_sendBufLen =0;
+                return 0;
             }
         }
     }
@@ -59,7 +83,6 @@ namespace net{
                 bret = 0;
             }
         }
-        dealMsgQueue();
         resetBuffer();
         return bret;
     }
@@ -71,28 +94,19 @@ namespace net{
         memmove(m_NetBuffer,m_NetBuffer+m_ReadOffset,m_NetOffset-m_ReadOffset);
         m_NetOffset = m_NetOffset-m_ReadOffset;
     }
-    void connObj::dealMsgQueue(){
-        //qpsMgr::g_pQpsMgr->updateQps(4, m_queueRecvMsg.size());
+    void connObj::dealMsg(msgObj *p){
+        assert(p);
         int len = 0;
         unsigned int msgid = 0;
-        while(!m_queueRecvMsg.empty()){
-            msgObj *p = m_queueRecvMsg.front();
-            m_queueRecvMsg.pop();
-            //*
-            //len = *(int*)(p->m_pbodyLen);
-            //send((char*)p->m_pbodyLen, sizeof(int)*2+ len);
-            //*/
-            msgid = p->getMsgid();
-            if( msgid >=0 && msgid<1999){
-                tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2gate", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
-            }else if(msgid >=2000 && msgid <2999){
-                tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2game", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
-            }else{
-                printf("[ERROR] invalid msgid: %d\n", msgid);
-            }
-            p->update();
-            delete p;
+        msgid = p->getMsgid();
+        if( msgid >=0 && msgid<1999){
+            tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2gate", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
+        }else if(msgid >=2000 && msgid <2999){
+            tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2game", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
+        }else{
+            printf("[ERROR] invalid msgid: %d\n", msgid);
         }
+        p->update();
     }
 
     bool connObj::IsTimeout(int nowsec){
@@ -129,7 +143,8 @@ namespace net{
 
             msgObj *p = new msgObj(pmsgid, psize, (unsigned char*)(m_NetBuffer+m_ReadOffset+sizeof(int)*2) );
             qpsMgr::g_pQpsMgr->updateQps(1, p->size());
-            m_queueRecvMsg.push(p);
+            dealMsg(p);
+            delete p;
             m_ReadOffset += *psize +sizeof(int)*2;
         }
     }
@@ -166,22 +181,19 @@ namespace net{
 
     connObj::connObj(int _fd){
         m_fd = _fd;
-        rid = 0;
         m_pid = 0;
         m_lastSec = 0;
         m_NetOffset = 0;
+        m_sendBufOffset= 0;
+        m_sendBufLen = 0;
         m_bChkReadZero = true;
 
 
-        ResetVars();
         memset(m_NetBuffer,0,BUFFER_SIZE);
+        memset(m_sendBuf,0,BUFFER_SIZE);
 
         mutexRecv = new pthread_mutex_t;
         pthread_mutex_init( mutexRecv, NULL );
-    }
-
-    void connObj::ResetVars(){
-        
     }
 
     void connObj::SetPid(int _pid){

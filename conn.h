@@ -11,21 +11,18 @@ namespace net{
 
 #define PACKET_SIZE 4
 #define MSGID_SIZE 4
-#define BUFFER_SIZE 64*1024
-    //typedef queue<recvBuff>
+#define BUFFER_SIZE 10*1024*1024
     class connObj{
         private:
             int m_fd;
-            unsigned long long rid;
             int m_pid;
-            queue<msgObj*> m_queueRecvMsg;
-            //packet size
-            char packetSizeBuf[PACKET_SIZE];
             
             int m_lastSec; //for timeout process
             char m_remoteAddr[64];
 
-            void ResetVars();
+            char m_sendBuf[BUFFER_SIZE];
+            int m_sendBufOffset;
+            int m_sendBufLen; //amount
 
             //buffer
             char m_NetBuffer[BUFFER_SIZE];
@@ -42,10 +39,10 @@ namespace net{
             int OnRead();
             void OnClose(bool btimeOut=false);
             void OnInit(char* paddr);
-            void dealMsgQueue();
+            void dealMsg(msgObj *p);
             void resetBuffer();
             bool parseBuff();
-            void send(unsigned char* buf, size_t size);
+            int send(unsigned char* buf, size_t size);
 
     };
 

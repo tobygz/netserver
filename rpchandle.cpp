@@ -59,36 +59,22 @@ namespace net{
 	}
 
     int rpcHandle::onPushMsg2Client(rpcObj* pobj){
-    	printf("called onPushMsg2Client pid: %d bodylen: %d msgid: %d\n", pobj->getPid(), pobj->getBodylen(), pobj->getMsgid());
+    	printf("[RPC] called onPushMsg2Client pid: %d bodylen: %d msgid: %d\n", pobj->getPid(), pobj->getBodylen(), pobj->getMsgid());
     	connObjMgr::g_pConnMgr->SendMsg( (unsigned int)pobj->getPid(), pobj->getBodyPtr(), pobj->getBodylen() );
-    	/*
-    		pid := request.GetPid()
-			core.GlobalConnMgr.SendMsg(uint32(pid), request.GetData())
-    	*/
-
 	}
 
     int rpcHandle::onPushMsg2ClientAll(rpcObj* pobj){
-    	printf("called onPushMsg2ClientAll\n");
+    	printf("[RPC] called onPushMsg2ClientAll\n");
     	connObjMgr::g_pConnMgr->SendMsgAll( pobj->getBodyPtr(), pobj->getBodylen() );
-		/*
-			core.GlobalConnMgr.SendMsgAll(request.GetData())
-		*/
     }
 
     int rpcHandle::onForceCloseCliConn(rpcObj* pobj){
-    	printf("called onForceCloseCliConn\n");
+    	printf("[RPC] called onForceCloseCliConn\n");
     	connObjMgr::g_pConnMgr->DelConn((unsigned int)pobj->getPid());
-		/*
-			core.GlobalConnMgr.ForceStop(uint32(request.GetPid()))
-		*/
     }
 
     int rpcHandle::onRegGamePid(rpcObj* pobj){
-    	printf("called onRegGamePid\n");
+    	printf("[RPC] called onRegGamePid\n");
     	connObjMgr::g_pConnMgr->RegGamePid((unsigned int)pobj->getPid(), (char*)pobj->getParam());
-		/*
-			core.GlobalConnMgr.UpdatePidGame(uint32(request.GetPid()), request.GetParam())
-		 */
     }
 }

@@ -5,7 +5,7 @@
 #include <queue>
 #include "recvBuff.h"
 
-#define RPC_BUFF_SIZE 20*1024*1024
+#define RPC_BUFF_SIZE 32*1024*1024
 using namespace std;
 namespace net{
 
@@ -17,7 +17,7 @@ namespace net{
             tcpclientMgr(); 
         public:
             tcpclient* createTcpclient(char* name, char* ip, int port);
-            tcpclient* getTcpClient(char* name);
+            tcpclient* getTcpClient(const char* name);
             tcpclient* getTcpClientByFd(int fd);
             bool DelConn(int fd);
 

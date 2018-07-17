@@ -4,11 +4,9 @@
 #include <map>
 #include "recvBuff.h"
 
-#define RPC_BUFF_SIZE 20*1024*1024
 using namespace std;
 namespace net{
 
-	
 
 	class rpcHandle {
 
