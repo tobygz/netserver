@@ -3,6 +3,7 @@
 
 #include <map>
 #include <queue>
+#include <string>
 #include "recvBuff.h"
 
 #define RPC_BUFF_SIZE 32*1024*1024
@@ -12,7 +13,7 @@ namespace net{
 	class tcpclient;
 	class tcpclientMgr {
         private:
-            map<char*, tcpclient*> m_mapTcpClient;
+            map<string, int> m_mapTcpClient; //name -> fd
             map<int, tcpclient*> m_mapFdTcpClient;
             tcpclientMgr(); 
         public:
@@ -51,6 +52,8 @@ namespace net{
 
             char m_recvBuffer[RPC_BUFF_SIZE];
             int m_recvOffset;
+
+            char* getName(){ return (char*) m_sName; }
 
 			int GetFd(){return m_sock;}
 			int initSock();

@@ -27,8 +27,12 @@ namespace net{
     }
 
     void tcpclientMgr::update(){
-        for( map<char*, tcpclient*>::iterator it = m_mapTcpClient.begin(); it!=m_mapTcpClient.end(); it++){
-            it->second->dealSend();
+        for( map<string, int>::iterator it = m_mapTcpClient.begin(); it!=m_mapTcpClient.end(); it++){
+            tcpclient *p = getTcpClientByFd(it->second);
+            if(!p){
+                continue;
+            }
+            p->dealSend();
         }
     }
 
@@ -36,7 +40,7 @@ namespace net{
         tcpclient* pclient = new tcpclient(name, ip, port);
         pclient->initSock();
         pclient->doconnect();
-        m_mapTcpClient[name] = pclient;
+        m_mapTcpClient[string(name)] = pclient->GetFd();
         m_mapFdTcpClient[pclient->GetFd()] = pclient;
         printf("[TCPCLIENTMGR] createTcpclient name: %s ip: %s fd: %d\n", name, ip, pclient->GetFd() );
     }
@@ -62,14 +66,14 @@ namespace net{
     }
 
     tcpclient* tcpclientMgr::getTcpClient(const char* name){
-        for( map<char*, tcpclient*>::iterator it = m_mapTcpClient.begin(); it!= m_mapTcpClient.end(); it++ ){
-            if( strcmp( name, it->first ) == 0 ){
-                return it->second;
-            }
+        string find(name);
+        map<string, int>::iterator it = m_mapTcpClient.find(find);
+        if( it == m_mapTcpClient.end()){
+            return NULL;
         }
-        return NULL;
-
+        return getTcpClientByFd(it->second);
     }
+
     tcpclient* tcpclientMgr::getTcpClientByFd(int fd){
         map<int, tcpclient*>::iterator it = m_mapFdTcpClient.find(fd);
         if( it == m_mapFdTcpClient.end() ){
@@ -85,6 +89,7 @@ namespace net{
         tcpclient *pconn = it->second;
         pconn->OnClose();
         m_mapFdTcpClient.erase( it );   
+        m_mapTcpClient.erase( string( pconn->getName() ) );
         delete pconn;
         return true;            
     }    
@@ -169,8 +174,9 @@ namespace net{
         rpcObj *p = NULL;
         while(true){
             if( m_recvOffset-offset<4 ){
-                //todo, error here, rpc not allowed combine package
-                printf("[FATAL] rpc not allowed combine package\n");
+                if( m_recvOffset - offset != 0 ){
+                    printf("[FATAL] rpc not allowed combine package m_recvOffset:%d offset:%d\n", m_recvOffset, offset);
+                }
                 break;
             }
             headlen = *(int*)(m_recvBuffer+offset);
