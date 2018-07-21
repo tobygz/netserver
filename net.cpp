@@ -14,6 +14,7 @@
 #include "connmgr.h"
 #include "tcpclient.h"
 #include "qps.h"
+#include "log.h"
 
 #define MAXEVENTS 1024
 
@@ -80,6 +81,12 @@ namespace net{
             if (sfd == -1)
                 continue;
 
+            int opt = 1;
+            if( setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT ,(const void*)&opt, sizeof(int)) != 0){
+                fprintf (stderr, "Could not set SO_REUSEADDR errno: %d\n",errno);
+                return -1;
+            }
+
             s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
             if (s == 0)
             {
@@ -102,7 +109,7 @@ namespace net{
 
     void netServer::destroy() {
         connObjMgr::g_pConnMgr->destroy();
-        usleep(1000);
+        usleep(100000);
         close (m_sockfd);
     }
 
@@ -162,6 +169,12 @@ namespace net{
     void* netServer::netThreadFun( void *param) {
         netServer *pthis = (netServer*) param;
 
+        queue<connObj*> que;
+        for(int i=0;i<4000;i++){
+            que.push( new connObj(i) );
+        }
+        LOG("connobj sizeof: %d que size: %d\n", sizeof(connObj), que.size());
+
         // Buffer where events are returned 
         struct epoll_event *events;
         events = (epoll_event*) calloc (MAXEVENTS, sizeof( epoll_event) );
@@ -174,7 +187,6 @@ namespace net{
             do{
                 n = epoll_wait (pthis->m_epollfd, events, MAXEVENTS, -1);
             }while(n<0&&errno == EINTR );
-            //qpsMgr::g_pQpsMgr->updateQps(2, n);
             for (i = 0; i < n; i++)
             {
                 if ((events[i].events & EPOLLERR) ||
@@ -217,7 +229,7 @@ namespace net{
                                 NI_NUMERICHOST | NI_NUMERICSERV);
                         if (s == 0)
                         {
-                            //printf("%.1f Accepted connection on descriptor %d " "(host=%s, port=%s)\r\n",getms()/1000.0, infd, hbuf, sbuf);
+                            //LOG("%.1f Accepted connection on descriptor %d " "(host=%s, port=%s)\r\n",getms()/1000.0, infd, hbuf, sbuf);
                         }
 
                         s = make_socket_non_blocking (infd);
@@ -241,16 +253,15 @@ namespace net{
         free (events);
 
         close (pthis->m_sockfd);
-        printf("exit epoll thread\n");
+        LOG("exit epoll thread");
 
         return NULL;
     }
 
     void netServer::queueProcessFun(){
-        //*
         queue<NET_OP_ST *> queNew;
-        pthread_mutex_lock(mutex);
 
+        pthread_mutex_lock(mutex);
         while(!this->m_netQueue.empty()){
             NET_OP_ST *pst = m_netQueue.front();
             m_netQueue.pop();
@@ -267,8 +278,8 @@ namespace net{
                 delete pst;
             }
         }
-
         pthread_mutex_unlock(mutex);
+
         connObjMgr::g_pConnMgr->CreateConnBatch(&queNew);
         qpsMgr::g_pQpsMgr->updateQps(3, m_readFdMap.size());
 
@@ -295,9 +306,10 @@ namespace net{
 
         //process all write event
         connObjMgr::g_pConnMgr->processAllWrite();
+        tcpclientMgr::m_sInst->processAllRpcobj();
 
         qpsMgr::g_pQpsMgr->dumpQpsInfo();
-        connObjMgr::g_pConnMgr->ChkConnTimeout();
+        //connObjMgr::g_pConnMgr->ChkConnTimeout();
     }
 
     void netServer::appendSt(NET_OP_ST *pst, bool bmtx){
@@ -322,7 +334,7 @@ namespace net{
         memset(pst,0, sizeof(NET_OP_ST));
         pst->op = DATA_IN;
         pst->fd = fd;
-                this->appendSt(pst);
+        this->appendSt(pst);
     }
 
     void netServer::appendConnNew(int fd, char *pip, char* pport){
@@ -373,7 +385,7 @@ namespace net{
             }
             delete pst;
         }
-        //printf("called queueProcessRpc m_readFdMap size: %d\n", m_readFdMap.size());
+        //LOG("called queueProcessRpc m_readFdMap size: %d\n", m_readFdMap.size());
 
         pthread_mutex_unlock(mutex);
 

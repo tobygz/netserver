@@ -9,14 +9,16 @@
 #include "qps.h"
 #include "net.h"
 #include "tcpclient.h"
+#include "log.h"
 
 namespace net{
 
     pthread_mutex_t *mutexRecv ; 
 
     void connObj::OnClose(bool btimeOut){
-        printf("called onclose fd: %d pid: %d \r\n", this->GetFd(), this->GetPid());
+        LOG("called onclose fd: %d pid: %d ", this->GetFd(), this->GetPid());
         close(GetFd());
+        m_bclose = true;
         if(btimeOut){
             tcpclientMgr::m_sInst->rpcCallGate((char*)"RegConn", m_pid, 3, NULL, 0);    
         }else{
@@ -30,17 +32,36 @@ namespace net{
         tcpclientMgr::m_sInst->rpcCallGate((char*)"RegConn", m_pid, 1, (unsigned char*)m_remoteAddr, byteLen);
     }
 
+    void connObj::chkmem(){
+        /*
+        for(int i=0; i<1024; i++){
+            if (memchk[i] != 0 ){
+                assert(false);
+            }
+            if (memchkAA[i] != 0 ){
+                assert(false);
+            }
+        }
+        */
+    }
     int connObj::send(unsigned char* buf, size_t size){
+        if(m_bclose){
+            return 0;
+        }
         if( size == 0 && m_sendBufLen == 0){
             return 0;
         }
+
+        assert( size + m_sendBufLen <= BUFFER_SIZE);
+        //chkmem();
         if( buf != NULL ){
             memcpy(m_sendBuf+m_sendBufLen, buf, size );
         }
+        //chkmem();
         m_sendBufLen += size;
-        assert(m_sendBufOffset>=0);
-        assert(m_sendBufLen>=0);
-        size_t s;
+        assert(m_sendBufOffset>=0&&m_sendBufOffset<=BUFFER_SIZE);
+        assert(m_sendBufLen>=0&&m_sendBufLen<=BUFFER_SIZE);
+        size_t s = 0;
         size_t nowSize=0;
         const size_t SEND_SIZE=64*1024;
         while(1){
@@ -58,13 +79,17 @@ namespace net{
                 netServer::g_netServer->appendConnClose(m_fd);
                 return 0;
             }
-            assert(s>0);
-            assert(m_sendBufOffset>=0);
-            assert(m_sendBufLen>=0);
+            assert(s>0&&s<=nowSize);
+            assert(m_sendBufOffset>=0&&m_sendBufOffset<=BUFFER_SIZE);
+            assert(m_sendBufLen>=0&&m_sendBufLen<=BUFFER_SIZE);
             m_sendBufOffset += s;
+            //LOG("connObj::send pid: %d  s: %d m_sendBufOffset: %d m_sendBufLen: %d", m_pid, s, m_sendBufOffset, m_sendBufLen );
             if(m_sendBufOffset >= m_sendBufLen){
+                //chkmem();
+                qpsMgr::g_pQpsMgr->updateQps(3, m_sendBufOffset);
                 m_sendBufOffset = 0;
                 m_sendBufLen =0;
+                //chkmem();
                 return 0;
             }
         }
@@ -72,6 +97,9 @@ namespace net{
 
 
     int connObj::OnRead(){
+        if(m_bclose){
+            return 0;
+        }
         int bret = 1;
         int ret = _OnRead();
         if( ret ==0 || ret ==1 ){
@@ -102,9 +130,10 @@ namespace net{
         if( msgid >=0 && msgid<1999){
             tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2gate", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
         }else if(msgid >=2000 && msgid <2999){
-            tcpclientMgr::m_sInst->rpcCallGate((char*)"Msg2game", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
+            tcpclientMgr::m_sInst->rpcCallGame((char*)"Msg2game", m_pid, msgid, p->getBodyPtr(), p->getBodylen());
         }else{
-            printf("[ERROR] invalid msgid: %d\n", msgid);
+            LOG("[FATAL] pid: %d invalid msgid: %d",m_pid, msgid);
+            assert(false);
         }
         p->update();
     }
@@ -114,7 +143,7 @@ namespace net{
             return false;
         }
         if( nowsec - m_lastSec >= 11){
-            printf("nowsec: %d lastsec: %d timeout\n", nowsec, m_lastSec);
+            LOG("nowsec: %d lastsec: %d timeout", nowsec, m_lastSec);
             return true;
         }else{
             return false;
@@ -132,25 +161,37 @@ namespace net{
         unsigned int *pmsgid = NULL;
         while(true){
             if(m_NetOffset-m_ReadOffset<sizeof(int)*2){
+                memmove(m_NetBuffer, m_NetBuffer+m_ReadOffset, m_NetOffset-m_ReadOffset);
+                m_NetOffset = m_NetOffset-m_ReadOffset;
                 return true;
             }
 
-            psize = (unsigned int*)m_NetBuffer;
-            pmsgid = (unsigned int*)(m_NetBuffer+sizeof(int));
+            psize = (unsigned int*)(m_NetBuffer+m_ReadOffset);
+            pmsgid = (unsigned int*)(m_NetBuffer+m_ReadOffset+sizeof(int));
             if(m_NetOffset-sizeof(int)*2-m_ReadOffset < *psize){
                 return true;
             }
 
+            if(*psize>=64*1024){
+                netServer::g_netServer->appendConnClose(m_fd);
+                LOG("[ERROR] pid: %d msg size: %d msgid: %d exceed 64k", m_pid, *psize, *pmsgid );
+                return true;
+            }
+            assert( rpcObj::chkPt( *pmsgid ) );
+
             msgObj *p = new msgObj(pmsgid, psize, (unsigned char*)(m_NetBuffer+m_ReadOffset+sizeof(int)*2) );
-            qpsMgr::g_pQpsMgr->updateQps(1, p->size());
+            qpsMgr::g_pQpsMgr->updateQps(4, p->size());
             dealMsg(p);
             delete p;
             m_ReadOffset += *psize +sizeof(int)*2;
         }
     }
     int connObj::_OnRead(){
+        if(m_bclose){
+            return 0;
+        }
         ssize_t count;
-        count = read (m_fd, m_NetBuffer+m_NetOffset, BUFFER_SIZE-m_NetOffset);
+        count = read (m_fd, m_NetBuffer+m_NetOffset, RECV_BUFFER_SIZE-m_NetOffset);
         if (count == -1)
         {
             //   If errno == EAGAIN, that means we have read all
@@ -188,8 +229,13 @@ namespace net{
         m_sendBufLen = 0;
         m_bChkReadZero = true;
 
+        m_bclose = false;
 
-        memset(m_NetBuffer,0,BUFFER_SIZE);
+
+        //memset(memchk,0,1024);
+        //memset(memchkAA,0,1024);
+
+        memset(m_NetBuffer,0,RECV_BUFFER_SIZE);
         memset(m_sendBuf,0,BUFFER_SIZE);
 
         mutexRecv = new pthread_mutex_t;

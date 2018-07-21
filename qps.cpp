@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include "connmgr.h"
+#include "log.h"
 
 using namespace std;
 namespace net{
@@ -31,10 +32,14 @@ namespace net{
         pthread_mutex_init( mutexQps, NULL );
 
         //create 1 qpsobj
-        addQps(1,(char*)"network");//for network
-        addQps(2,(char*)"mainloop");//for mainloop
-        addQps(3,(char*)"readfd");//for readfd
+        //addQps(1,(char*)"network");//for network
+        //addQps(2,(char*)"mainloop");//for mainloop
+        //addQps(3,(char*)"readfd");//for readfd
         //addQps(4,(char*)"dealrecv");//for recvBuff process
+        addQps(1,(char*)"rpcRecv");
+        addQps(2,(char*)"rpcSend");
+        addQps(3,(char*)"cliSend");
+        addQps(4,(char*)"cliRecv");
     }
 
     void qpsMgr::updateQps(int id, int _size){
@@ -55,7 +60,7 @@ namespace net{
 
     void qpsMgr::dumpQpsInfo(){
         long long nowMs = getms();
-        if(nowMs - m_lastMs<5000){
+        if(nowMs - m_lastMs<1000){
             return;
         }
         m_lastMs = nowMs;
@@ -76,6 +81,6 @@ namespace net{
         sprintf(m_debugInfo, "%s [online: %d]", m_debugInfo, connObjMgr::g_pConnMgr->GetOnline());
 
         pthread_mutex_unlock(mutexQps);
-        printf("%.1f [QPS]: %s\r\n",nowMs/1000.0, m_debugInfo );
+        LOG("[QPS]: %s", m_debugInfo );
     }
 }

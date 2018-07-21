@@ -5,6 +5,7 @@
 
 #include "qps.h"
 #include "net.h"
+#include "log.h"
 
 
 namespace net{
@@ -56,7 +57,7 @@ namespace net{
             m_connFdMap[pconn->GetFd()] = pconn->GetPid();
             pconn->OnInit( (char*)pst->paddr );
             delete pst;
-            printf("add pconn fd: %d pst->fd: %d pid: %d\n", pconn->GetFd(), pst->fd, pconn->GetPid() );
+            LOG("add pconn fd: %d pst->fd: %d pid: %d", pconn->GetFd(), pst->fd, pconn->GetPid() );
         }
         pthread_mutex_unlock(mutex);
     }
@@ -142,7 +143,7 @@ namespace net{
         }
         pthread_mutex_unlock(mutex);
         p->OnClose(btimeOut);
-        printf("connObjMgr delconn, fd: %d pid: %d\n", fd, p->GetPid());
+        LOG("connObjMgr delconn, fd: %d pid: %d", fd, p->GetPid());
         delete p;
     }
 
@@ -183,7 +184,7 @@ namespace net{
     void connObjMgr::SendMsg(unsigned int pid, unsigned char* pmem, unsigned int size){
         connObj *p = GetConnByPid(pid);
         if(p==NULL){
-            printf("[ERROR] connObjMgr::SendMsg failed pid: %d len: %d\n", pid, size );
+            LOG("[ERROR] connObjMgr::SendMsg failed pid: %d len: %d", pid, size );
         }else{
             p->send( pmem, size );
         }

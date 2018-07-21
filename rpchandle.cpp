@@ -8,6 +8,7 @@
 #include "net.h"
 #include "recvBuff.h"
 #include "connmgr.h"
+#include "log.h"
 
 #define RPC_PING "ping"
 #define RPC_PushMsg2Client "PushMsg2Client"
@@ -43,11 +44,11 @@ namespace net{
 		}else if( strcmp(ptar, RPC_RegGamePid) == 0) {
 			it = m_mapHandler.find((char*)RPC_RegGamePid);			
 		}else{
-			printf("[ERROR] invalied rpc name: %s\n", pobj->getTarget() );
+			LOG("[ERROR] invalied rpc name: %s", pobj->getTarget() );
             return;
 		}
 
-        printf("[DEBUG] process rpc name: %s\n", pobj->getTarget() );
+        LOG("[DEBUG] process rpc name: %s", pobj->getTarget() );
 
 		if(it!= m_mapHandler.end()){
 			(this->*it->second)(pobj);
@@ -55,26 +56,26 @@ namespace net{
 	}
 
     int rpcHandle::onPing(rpcObj*){
-    	printf("called onPing\n");
+    	LOG("called onPing");
 	}
 
     int rpcHandle::onPushMsg2Client(rpcObj* pobj){
-    	printf("[RPC] called onPushMsg2Client pid: %d bodylen: %d msgid: %d\n", pobj->getPid(), pobj->getBodylen(), pobj->getMsgid());
+    	LOG("[RPC] called onPushMsg2Client pid: %d bodylen: %d msgid: %d", pobj->getPid(), pobj->getBodylen(), pobj->getMsgid());
     	connObjMgr::g_pConnMgr->SendMsg( (unsigned int)pobj->getPid(), pobj->getBodyPtr(), pobj->getBodylen() );
 	}
 
     int rpcHandle::onPushMsg2ClientAll(rpcObj* pobj){
-    	printf("[RPC] called onPushMsg2ClientAll\n");
+    	//LOG("[RPC] called onPushMsg2ClientAll");
     	connObjMgr::g_pConnMgr->SendMsgAll( pobj->getBodyPtr(), pobj->getBodylen() );
     }
 
     int rpcHandle::onForceCloseCliConn(rpcObj* pobj){
-    	printf("[RPC] called onForceCloseCliConn\n");
+    	//LOG("[RPC] called onForceCloseCliConn");
     	connObjMgr::g_pConnMgr->DelConn((unsigned int)pobj->getPid());
     }
 
     int rpcHandle::onRegGamePid(rpcObj* pobj){
-    	printf("[RPC] called onRegGamePid\n");
+    	//LOG("[RPC] called onRegGamePid pid: %ul name: %s", pobj->getPid(), pobj->getParam());
     	connObjMgr::g_pConnMgr->RegGamePid((unsigned int)pobj->getPid(), (char*)pobj->getParam());
     }
 }

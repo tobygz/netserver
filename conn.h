@@ -11,21 +11,27 @@ namespace net{
 
 #define PACKET_SIZE 4
 #define MSGID_SIZE 4
-#define BUFFER_SIZE 10*1024*1024
+#define BUFFER_SIZE 1024*1024
+#define RECV_BUFFER_SIZE 1024*1024
     class connObj{
         private:
             int m_fd;
             int m_pid;
             
+            bool m_bclose;
+
             int m_lastSec; //for timeout process
             char m_remoteAddr[64];
 
             char m_sendBuf[BUFFER_SIZE];
-            int m_sendBufOffset;
-            int m_sendBufLen; //amount
+            //char memchk[1024];
+            unsigned int m_sendBufOffset;
+            unsigned int m_sendBufLen; //amount
+            //char memchkAA[1024];
+            void chkmem();
 
-            //buffer
-            char m_NetBuffer[BUFFER_SIZE];
+            //recv buffer
+            char m_NetBuffer[RECV_BUFFER_SIZE];
             int m_NetOffset;    //write offset
             int m_ReadOffset;    //read offset
             bool m_bChkReadZero;
