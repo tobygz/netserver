@@ -33,3 +33,5 @@ you may get the output from nets as following
 
 
 Intel(R) Xeon(R) CPU E5-2620 v3 @ 2.40GHz * 8， run both server & client.
+
+someone said, it's impossible to deal a packet in 0.1ms, it's impossible.
