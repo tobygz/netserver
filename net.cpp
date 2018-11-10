@@ -1,6 +1,3 @@
-
-//https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/epoll-example.c
-
 #include "net.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -159,6 +156,10 @@ namespace net{
             int n, i;
 
             n = epoll_wait (efd, events, MAXEVENTS, -1);
+            if(n<0){
+                printf("epoll_wait error:%d\r\n", errno);
+                break;
+            }
             qpsMgr::g_pQpsMgr->updateQps(2, n);
             for (i = 0; i < n; i++)
             {
@@ -168,8 +169,6 @@ namespace net{
                 {
                     // An error has occured on this fd, or the socket is not
                     //   ready for reading (why were we notified then?) 
-                    printf("epoll error fd: %d\n", events[i].data.fd);
-                    close (events[i].data.fd);
                     pthis->appendConnClose(events[i].data.fd);
                     continue;
                 }
@@ -209,8 +208,8 @@ namespace net{
                                 NI_NUMERICHOST | NI_NUMERICSERV);
                         if (s == 0)
                         {
-                            printf("%f Accepted connection on descriptor %d "
-                                    "(host=%s, port=%s)\n",getms()/1000.0, infd, hbuf, sbuf);
+                            printf("%.1f Accepted connection on descriptor %d "
+                                    "(host=%s, port=%s)\r\n",getms()/1000.0, infd, hbuf, sbuf);
                         }
 
                         // Make the incoming socket non-blocking and add it to the
@@ -260,9 +259,6 @@ namespace net{
         queue<int> queNew;
         pthread_mutex_lock(mutex);
 
-//        if(m_netQueue.size() != 0){
-//            printf("queueProcessFun net map size: %d\n", m_netQueue.size() );
-//        }
         while(!this->m_netQueue.empty()){
             NET_OP_ST *pst = m_netQueue.front();
             m_netQueue.pop();
@@ -273,8 +269,6 @@ namespace net{
                 queNew.push(pst->fd);
             }else if(pst->op == DATA_IN){
                 m_readFdMap[pst->fd] = true;
-                //readLst.push_front( pst->fd );
-                //readFdQueue.push(pst->fd);
             }else if(pst->op == QUIT_CONN){
                 connObjMgr::g_pConnMgr->DelConn(pst->fd);
             }
@@ -285,9 +279,6 @@ namespace net{
         connObjMgr::g_pConnMgr->CreateConnBatch(&queNew);
         qpsMgr::g_pQpsMgr->updateQps(3, m_readFdMap.size());
 
-//        if(m_readFdMap.size() != 0){
-//            printf("queueProcessFun read map size: %d\n", m_readFdMap.size() );
-//        }
         queue<int> delLst;
         //process all read event
         int fd, ret;
@@ -302,7 +293,6 @@ namespace net{
             if( ret == 0 ){
                 delLst.push(fd);
             }
-            pconn->OnProcess();
         }
         while(!delLst.empty()){
             int nfd = delLst.front();
@@ -311,10 +301,10 @@ namespace net{
         }
 
         qpsMgr::g_pQpsMgr->dumpQpsInfo();
+        connObjMgr::g_pConnMgr->ChkConnTimeout();
     }
 
     void netServer::appendSt(NET_OP_ST *pst, bool bmtx){
-        //printf("appendDataIn fd: %d oper: %d(%s)\r\n", pst->fd, pst->op, this->GetOpType(pst->op));
         if(bmtx){
             pthread_mutex_lock(mutex);
         }
@@ -324,37 +314,25 @@ namespace net{
         }
     }
 
-    /*
     void netServer::appendDataIn(int fd){
-        connObj *pconn = connObjMgr::g_pConnMgr->GetConn(fd);
-        if (pconn == NULL){
-            return;
-        }
-        pconn->OnRead();
+        NET_OP_ST *pst = new NET_OP_ST();
+        pst->op = DATA_IN;
+        pst->fd = fd;
+        this->appendSt(pst);
     }
-    */
-    
-   void netServer::appendDataIn(int fd){
-       NET_OP_ST *pst = new NET_OP_ST();
-       pst->op = DATA_IN;
-       pst->fd = fd;
-       this->appendSt(pst);
-       }
 
-       void netServer::appendConnNew(int fd){
-        //connObjMgr::g_pConnMgr->CreateConn(fd);
-       NET_OP_ST *pst = new NET_OP_ST();
-       pst->op = NEW_CONN;
-       pst->fd = fd;
-       this->appendSt(pst);
-       }
-       void netServer::appendConnClose(int fd, bool bmtx){
-        //connObjMgr::g_pConnMgr->DelConn(fd);
-       NET_OP_ST *pst = new NET_OP_ST();
-       pst->op = QUIT_CONN;
-       pst->fd = fd;
-       this->appendSt(pst, bmtx);
-       }
+    void netServer::appendConnNew(int fd){
+        NET_OP_ST *pst = new NET_OP_ST();
+        pst->op = NEW_CONN;
+        pst->fd = fd;
+        this->appendSt(pst);
+    }
+    void netServer::appendConnClose(int fd, bool bmtx){
+        NET_OP_ST *pst = new NET_OP_ST();
+        pst->op = QUIT_CONN;
+        pst->fd = fd;
+        this->appendSt(pst, bmtx);
+    }
 
 
     char* netServer::GetOpType(NET_OP op){

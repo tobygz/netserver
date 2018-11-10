@@ -21,7 +21,6 @@ pthread_t InitSocketListen(char* port){
 		printf ("Create pthread error!\n");
 		exit (1);
 	}
-	//pthread_join(id,NULL);	
 	return id;
 }
 
@@ -48,7 +47,7 @@ int main(){
             break;
         }
         netServer::g_netServer->queueProcessFun();
-		//usleep(100);
+		//usleep(1);
 	}
 
     netServer::g_netServer->destroy();

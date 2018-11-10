@@ -3,6 +3,8 @@
 #include <pthread.h>
 #include <stdio.h>
 
+#include "qps.h"
+
 
 namespace net{
     connObjMgr* connObjMgr::g_pConnMgr = new connObjMgr;
@@ -13,6 +15,24 @@ namespace net{
         maxSessid = 0;
         mutex = new pthread_mutex_t;
         pthread_mutex_init( mutex, NULL );
+    }
+
+    void connObjMgr::ChkConnTimeout(){
+        int sec = getsec();
+        queue<connObj*> toLst;
+        pthread_mutex_lock(mutex);
+        for(map<int,connObj*>::iterator iter = m_connFdMap.begin(); iter!= m_connFdMap.end(); iter++){
+            connObj* p = iter->second;
+            if(p->IsTimeout(sec)){
+                toLst.push(p);
+            }
+        }
+        pthread_mutex_unlock(mutex);
+        while(!toLst.empty()){
+            connObj *p= toLst.front();
+            toLst.pop();
+            DelConn(p->GetFd());
+        }
     }
 
     void connObjMgr::CreateConnBatch(queue<int>* vec) {
@@ -49,10 +69,12 @@ namespace net{
     connObj* connObjMgr::GetConn(int fd ){
         pthread_mutex_lock(mutex);
         map<int,connObj*>::iterator iter = m_connFdMap.find(fd);
-        pthread_mutex_unlock(mutex);
         if ( iter != m_connFdMap.end() ){
-            return (connObj*) iter->second;
+            connObj* p = iter->second;
+            pthread_mutex_unlock(mutex);
+            return p;
         }
+        pthread_mutex_unlock(mutex);
         return NULL;
     }
 

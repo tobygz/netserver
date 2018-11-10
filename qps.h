@@ -6,42 +6,43 @@
 
 namespace net{
 
-	long long getms(); 
+    long long getms(); 
+    int getsec(); 
 
-	class qpsObj{
-		public:
-			qpsObj(int _id, char *val){
-				id = _id;
+    class qpsObj{
+        public:
+            qpsObj(int _id, char *val){
+                id = _id;
                 strcpy(info, val);
                 Reset();
-			}
-			int id;
+            }
+            int id;
             char info[512];
-			int count;
-			unsigned long long size;
-			void Reset(){
-				count = 0;
-				size = 0;
-			}
-	};
+            int count;
+            unsigned long long size;
+            void Reset(){
+                count = 0;
+                size = 0;
+            }
+    };
 
-	class qpsMgr{
+    class qpsMgr{
 
         std::map<int,qpsObj*> m_qpsMap; 
-		long long m_lastMs;
-		char m_debugInfo[1024];
+        long long m_lastMs;
+        char m_debugInfo[1024];
 
-		public:
-		qpsMgr();
+        public:
+        qpsMgr();
 
-		void addQps(int id, char* val){
+        void addQps(int id, char* val){
             qpsObj *pobj = new qpsObj(id, val);
             m_qpsMap[id] = pobj;
-		}
-		void updateQps(int id, int _size);
+        }
+        void updateQps(int id, int _size);
         void dumpQpsInfo();
-			
-		static qpsMgr* g_pQpsMgr ;
-	};
+
+        static qpsMgr* g_pQpsMgr ;
+    };
 }
 #endif

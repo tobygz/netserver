@@ -15,6 +15,17 @@ namespace net{
         eRecvType_data,
     };
 
+    class msgObj{
+        public:
+        unsigned long long m_uid;
+        int *m_pmsgId;
+        int *m_pbodyLen;
+        char* m_pBody;
+        msgObj(int* pid, int* plen, char* p);
+        int size();
+        void update();
+    };
+
     class recvBuff  {
         private:
             char    m_pMem[ DEFAULT_RECV_SIZE ];
